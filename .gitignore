@@ -29,3 +29,8 @@ yarn-error.log
 # PHPStan and Rector result caches.
 /build
 /junit.xml
+
+# A sqlite run with DB_DATABASE=invoices creates the file relative to the
+# working directory; these slipped into one commit exactly that way.
+/invoices
+/invoices-*
