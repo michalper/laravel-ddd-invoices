@@ -22,7 +22,8 @@ services:
         networks:
             - sail
         depends_on:
-            - redis
+            redis:
+                condition: service_healthy
     queue:
         # The outbox is the default notifier, so a worker has to be running for the
         # send flow to reach the provider. Bringing it up here means ./start.sh is
@@ -43,7 +44,8 @@ services:
         networks:
             - sail
         depends_on:
-            - redis
+            redis:
+                condition: service_healthy
     redis:
         image: 'redis:alpine'
         ports:
@@ -57,8 +59,10 @@ services:
                 - CMD
                 - redis-cli
                 - ping
-            retries: 3
+            interval: 3s
+            retries: 5
             timeout: 5s
+            start_period: 5s
 networks:
     sail:
         driver: bridge

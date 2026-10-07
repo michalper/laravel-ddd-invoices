@@ -12,7 +12,15 @@ touch database/database.sqlite
 # is what resolves platform-specific packages and executes the post-install scripts.
 if [ ! -d vendor/laravel/sail/runtimes ]; then
     echo '==> Bootstrapping vendor/ so the Sail build context exists...'
-    docker run --rm -v "$(pwd)":/app -w /app composer:2 \
+    # --user matters on Linux: without it the container writes vendor/ as root on
+    # the bind mount, and the host's own composer, vendor/bin/* or IDE indexer then
+    # hit permission errors on a tree they cannot touch. COMPOSER_HOME has to move
+    # with it, because the image's default home is not writable by that uid.
+    docker run --rm \
+        --user "$(id -u):$(id -g)" \
+        -e COMPOSER_HOME=/tmp/composer \
+        -e COMPOSER_CACHE_DIR=/tmp/composer/cache \
+        -v "$(pwd)":/app -w /app composer:2 \
         composer install --ignore-platform-reqs --no-scripts --no-interaction
 fi
 
