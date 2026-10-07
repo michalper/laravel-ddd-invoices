@@ -1,0 +1,87 @@
+name: End-to-end
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  e2e:
+    name: Lifecycle over HTTP
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: pdo_sqlite, sqlite3, redis
+          coverage: none
+          tools: composer:v2
+
+      - uses: ramsey/composer-install@v3
+
+      - name: Prepare a real environment
+        run: |
+          cp .env.example .env
+          # The service container is published on localhost, not a compose network.
+          sed -i 's/^REDIS_HOST=.*/REDIS_HOST=127.0.0.1/' .env
+          touch database/database.sqlite
+          php artisan migrate --force
+
+      # A real web server and a real worker on a real queue. This is the only level
+      # that exercises the asynchronous path: the feature suite runs the outbox job
+      # inline, because Laravel fires afterCommit callbacks immediately under
+      # RefreshDatabase and the testing queue connection is sync.
+      - name: Boot the application and a queue worker
+        run: |
+          nohup php artisan serve --host=127.0.0.1 --port=8000 > storage/logs/serve.log 2>&1 &
+          nohup php artisan queue:work --tries=5 --sleep=1 > storage/logs/worker.log 2>&1 &
+          healthy=0
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/up > /dev/null; then
+              healthy=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$healthy" -ne 1 ]; then
+            echo "Application did not become healthy in time." >&2
+            cat storage/logs/serve.log || true
+            exit 1
+          fi
+          echo "Application is up."
+
+      - name: Run the end-to-end suite
+        env:
+          E2E_BASE_URL: http://127.0.0.1:8000
+        run: vendor/bin/phpunit --testsuite=E2E --testdox
+
+      # Proves the worker actually drained the outbox rather than leaving durable
+      # intents behind: anything stalled would be reported here.
+      - name: Assert the worker settled every notification
+        run: |
+          output=$(php artisan invoices:reconcile)
+          echo "$output"
+          echo "$output" | grep -q '0 stalled notification' || {
+            echo "The queue worker left notifications unprocessed." >&2
+            exit 1
+          }
+
+      - name: Show application logs on failure
+        if: failure()
+        run: |
+          tail -n 100 storage/logs/serve.log || true
+          tail -n 100 storage/logs/worker.log || true
+          tail -n 200 storage/logs/laravel.log || true
