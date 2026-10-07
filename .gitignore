@@ -25,3 +25,6 @@ yarn-error.log
 /infection-summary.log
 /.phpunit.cache
 /coverage.xml
+
+# PHPStan and Rector result caches.
+/build

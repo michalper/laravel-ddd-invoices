@@ -15,14 +15,19 @@ use Illuminate\Database\Eloquent\Model;
  */
 final class ProductLineModel extends Model
 {
+    #[\Override]
     protected $table = 'invoice_product_lines';
 
+    #[\Override]
     protected $keyType = 'string';
 
+    #[\Override]
     public $incrementing = false;
 
+    #[\Override]
     protected $guarded = [];
 
+    #[\Override]
     protected $casts = [
         'quantity' => 'int',
         'unit_price' => 'int',

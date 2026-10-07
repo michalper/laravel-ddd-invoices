@@ -19,14 +19,19 @@ use Illuminate\Database\Eloquent\Model;
  */
 final class OutboxMessageModel extends Model
 {
+    #[\Override]
     protected $table = 'invoice_notification_outbox';
 
+    #[\Override]
     protected $keyType = 'string';
 
+    #[\Override]
     public $incrementing = false;
 
+    #[\Override]
     protected $guarded = [];
 
+    #[\Override]
     protected $casts = [
         'payload' => 'array',
         'attempts' => 'int',

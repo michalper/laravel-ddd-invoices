@@ -21,12 +21,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 final class InvoiceModel extends Model
 {
+    #[\Override]
     protected $table = 'invoices';
 
+    #[\Override]
     protected $keyType = 'string';
 
+    #[\Override]
     public $incrementing = false;
 
+    #[\Override]
     protected $guarded = [];
 
     /** @return HasMany<ProductLineModel, $this> */
