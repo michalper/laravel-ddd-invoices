@@ -3,6 +3,14 @@
 [![CI](https://github.com/michalper/laravel-ddd-invoices/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/michalper/laravel-ddd-invoices/actions/workflows/ci.yml)
 [![End-to-end](https://github.com/michalper/laravel-ddd-invoices/actions/workflows/e2e.yml/badge.svg?branch=main)](https://github.com/michalper/laravel-ddd-invoices/actions/workflows/e2e.yml)
 [![Mutation testing](https://github.com/michalper/laravel-ddd-invoices/actions/workflows/mutation.yml/badge.svg?branch=main)](https://github.com/michalper/laravel-ddd-invoices/actions/workflows/mutation.yml)
+[![Smoke](https://github.com/michalper/laravel-ddd-invoices/actions/workflows/smoke.yml/badge.svg?branch=main)](https://github.com/michalper/laravel-ddd-invoices/actions/workflows/smoke.yml)
+
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=michalper_laravel-ddd-invoices&metric=alert_status)](https://sonarcloud.io/project/overview?id=michalper_laravel-ddd-invoices)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=michalper_laravel-ddd-invoices&metric=coverage)](https://sonarcloud.io/component_measures?id=michalper_laravel-ddd-invoices&metric=coverage)
+[![Maintainability](https://sonarcloud.io/api/project_badges/measure?project=michalper_laravel-ddd-invoices&metric=sqale_rating)](https://sonarcloud.io/project/overview?id=michalper_laravel-ddd-invoices)
+[![Security](https://sonarcloud.io/api/project_badges/measure?project=michalper_laravel-ddd-invoices&metric=security_rating)](https://sonarcloud.io/project/overview?id=michalper_laravel-ddd-invoices)
+[![Reliability](https://sonarcloud.io/api/project_badges/measure?project=michalper_laravel-ddd-invoices&metric=reliability_rating)](https://sonarcloud.io/project/overview?id=michalper_laravel-ddd-invoices)
+[![codecov](https://codecov.io/gh/michalper/laravel-ddd-invoices/graph/badge.svg)](https://codecov.io/gh/michalper/laravel-ddd-invoices)
 
 ![PHP](https://img.shields.io/badge/PHP-8.5-777BB4?logo=php&logoColor=white)
 ![Laravel](https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white)
@@ -10,12 +18,13 @@
 ![Coverage gate](https://img.shields.io/badge/coverage%20gate-95%25-brightgreen)
 ![Mutation gate](https://img.shields.io/badge/MSI%20gate-75%25-brightgreen)
 
-The three status badges are live. The five below them state the thresholds CI
-enforces rather than the current measurements, so they cannot quietly go stale as
-the numbers move: the gates live in `phpunit.xml`, `phpstan.neon`,
-`tools/check-coverage.php` and `infection.json5`, and a run that falls under one
-fails. At the time of writing the module sits at 100% line coverage and 80%
-covered-code MSI.
+Three kinds of badge, on purpose. The first row is live workflow status. The second
+row is live measurement, served by SonarCloud and Codecov from the latest analysis —
+those numbers move with the code and cannot go stale. The third row states the
+thresholds CI enforces rather than any current reading: the gates live in
+`phpunit.xml`, `phpstan.neon`, `tools/check-coverage.php` and `infection.json5`, and
+a run that falls under one fails. As of the last full audit the module sits at 100%
+line coverage, 100% mutation code coverage and 78% covered-code MSI.
 
 ## Invoice Structure:
 
