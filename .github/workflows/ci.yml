@@ -64,6 +64,82 @@ jobs:
       - name: Coverage floor
         run: php tools/check-coverage.php coverage.xml src/Modules/Invoices 95
 
+  # The claim this module's concurrency control rests on is that a conditional
+  # UPDATE checked by affected-row count behaves the same on every engine (see
+  # docs/adr/0002). CI ran SQLite only, so that claim was reasoned rather than
+  # tested — and the first real run of this matrix found that product-line ordering
+  # was engine-dependent, because InnoDB clusters on a random UUID primary key
+  # while SQLite and PostgreSQL happened to return insertion order.
+  #
+  # Only the Feature suite runs here. The Unit suite touches no database, and
+  # coverage is already gated on the job above, so repeating either would buy
+  # nothing but minutes.
+  database:
+    name: Feature suite on ${{ matrix.db.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        db:
+          - name: MySQL 8
+            image: mysql:8
+            connection: mysql
+            port: 3306
+            health: mysqladmin ping -h 127.0.0.1 -uinvoices -pinvoices
+          - name: PostgreSQL 17
+            image: postgres:17
+            connection: pgsql
+            port: 5432
+            health: pg_isready -U invoices
+
+    services:
+      # One service whose image comes from the matrix, so each leg starts exactly
+      # the engine it tests. Both images' env vars are set; each ignores the other's.
+      db:
+        image: ${{ matrix.db.image }}
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: invoices
+          MYSQL_USER: invoices
+          MYSQL_PASSWORD: invoices
+          POSTGRES_DB: invoices
+          POSTGRES_USER: invoices
+          POSTGRES_PASSWORD: invoices
+        ports:
+          - ${{ matrix.db.port }}:${{ matrix.db.port }}
+        options: >-
+          --health-cmd "${{ matrix.db.health }}"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: pdo_mysql, pdo_pgsql
+          coverage: none
+          tools: composer:v2
+
+      - uses: ramsey/composer-install@v4
+
+      - run: cp .env.example .env
+
+      # phpunit.xml pins DB_CONNECTION to sqlite, but its <env> entries do not carry
+      # force="true", so a real environment variable wins. Verified rather than
+      # assumed.
+      - name: Feature suite
+        env:
+          DB_CONNECTION: ${{ matrix.db.connection }}
+          DB_HOST: 127.0.0.1
+          DB_PORT: ${{ matrix.db.port }}
+          DB_DATABASE: invoices
+          DB_USERNAME: invoices
+          DB_PASSWORD: invoices
+        run: vendor/bin/phpunit --testsuite=Feature --testdox
+
   # One definition, three jobs. A matrix does not make any single check faster —
   # every leg is its own runner doing its own install — but it keeps the three
   # distinct red signals while removing three copies of the same eight steps.

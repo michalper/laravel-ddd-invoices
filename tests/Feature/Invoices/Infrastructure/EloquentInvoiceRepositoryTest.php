@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Invoices\Infrastructure;
 
+use Modules\Invoices\Domain\Entities\Invoice;
 use Modules\Invoices\Domain\Enums\StatusEnum;
 use Modules\Invoices\Domain\Exceptions\InvoiceNotFoundException;
+use Modules\Invoices\Domain\ValueObjects\ProductLine;
+use Modules\Invoices\Domain\ValueObjects\ProductLineCollection;
 use Ramsey\Uuid\Uuid;
 use Tests\Support\Invoices\CreatesInvoices;
 use Tests\TestCase;
@@ -58,6 +61,34 @@ final class EloquentInvoiceRepositoryTest extends TestCase
             self::assertSame($line->unitPrice, $restoredLines[$index]->unitPrice);
             self::assertSame($line->totalUnitPrice(), $restoredLines[$index]->totalUnitPrice());
         }
+    }
+
+    /**
+     * The order has to be the repository's, not the engine's. Creation order is
+     * deliberately the reverse of the defined order here, so a missing ORDER BY
+     * cannot pass by coincidence — which is exactly how this went unnoticed while
+     * CI ran SQLite alone: SQLite and PostgreSQL returned insertion order, MySQL
+     * returned primary-key order over random UUIDs.
+     */
+    public function test_product_lines_come_back_in_a_deterministic_order(): void
+    {
+        $invoice = Invoice::draft(
+            customerName: 'Ada Lovelace',
+            customerEmail: 'ada@example.com',
+            productLines: ProductLineCollection::fromArray([
+                ProductLine::create(name: 'Zeta widget', quantity: 1, unitPrice: 100),
+                ProductLine::create(name: 'Alpha widget', quantity: 1, unitPrice: 200),
+            ]),
+        );
+
+        $this->invoiceRepository()->save($invoice);
+
+        $names = array_map(
+            static fn (ProductLine $line): string => $line->name,
+            $this->invoiceRepository()->get($invoice->id())->productLines()->toArray(),
+        );
+
+        self::assertSame(['Alpha widget', 'Zeta widget'], $names);
     }
 
     public function test_find_returns_null_for_an_unknown_identifier(): void
