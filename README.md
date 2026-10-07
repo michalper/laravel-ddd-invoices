@@ -92,6 +92,16 @@ Everything above is the task brief as delivered. This section documents the
 implementation and is the "docs in README" that `phpunit.xml` and the CI workflows
 point at.
 
+Two companion documents carry the detail that does not belong in a brief:
+
+* **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the directory and class map, layer by layer,
+  for anyone working on the code.
+* **[docs/adr/](docs/adr/)** — the decision records. Seven decisions shape this module, and each
+  one has the context, the alternatives that were rejected, and the costs it imposes:
+  keeping the aggregate framework-free, compare-and-swap instead of locking, the transactional
+  outbox, claiming before notifying, one renderable for the exception mapping, a
+  non-deferrable provider, and reconciling from the outbox row.
+
 ## Running the test suites
 
 The default run is the `Unit` and `Feature` suites, which need no services and no
