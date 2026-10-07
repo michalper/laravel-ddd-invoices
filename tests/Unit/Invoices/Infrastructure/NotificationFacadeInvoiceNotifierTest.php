@@ -47,15 +47,29 @@ final class NotificationFacadeInvoiceNotifierTest extends TestCase
         self::assertStringContainsString('Ada Lovelace', $captured->message);
     }
 
+    /**
+     * The cause must survive for the log but must not reach the message, because
+     * Presentation returns getMessage() in the 502 body and a renderable() callback
+     * is not subject to APP_DEBUG masking. Asserting both halves pins the split:
+     * the client gets a stable sentence, the operator gets the provider's words.
+     */
     public function test_a_provider_failure_becomes_a_domain_level_send_failure(): void
     {
+        $cause = new RuntimeException('SMTP connect failed: smtp.internal:587');
+
         $facade = $this->createStub(NotificationFacadeInterface::class);
-        $facade->method('notify')->willThrowException(new RuntimeException('smtp refused'));
+        $facade->method('notify')->willThrowException($cause);
 
-        $this->expectException(InvoiceSendFailedException::class);
-        $this->expectExceptionMessageMatches('/smtp refused/');
+        $invoice = $this->invoice();
 
-        new NotificationFacadeInvoiceNotifier($facade)->notifyInvoiceSent($this->invoice());
+        try {
+            new NotificationFacadeInvoiceNotifier($facade)->notifyInvoiceSent($invoice);
+            self::fail('A provider refusal should surface as '.InvoiceSendFailedException::class.'.');
+        } catch (InvoiceSendFailedException $e) {
+            self::assertStringContainsString($invoice->id()->toString(), $e->getMessage());
+            self::assertStringNotContainsString('smtp.internal', $e->getMessage());
+            self::assertSame($cause, $e->getPrevious());
+        }
     }
 
     private function invoice(): Invoice

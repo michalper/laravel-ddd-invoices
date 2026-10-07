@@ -22,10 +22,22 @@ use Throwable;
  */
 final class InvoiceSendFailedException extends InvoiceException
 {
+    /**
+     * The cause travels as `previous` only, never in the message.
+     *
+     * That distinction matters because Presentation returns getMessage() in the 502
+     * body, and a `renderable()` callback runs before the framework's own rendering
+     * — so APP_DEBUG=false does not mask it the way it masks an unhandled 500.
+     * Interpolating the downstream message here would hand any API client whatever
+     * the driver happened to say: with a real HTTP or database-backed provider that
+     * is a Guzzle or PDO string carrying internal hostnames, URLs, DSN fragments or
+     * SQL. Keeping it as `previous` still gets the whole chain into the log, which
+     * is where an operator can actually use it.
+     */
     public static function forInvoice(UuidInterface $id, Throwable $previous): self
     {
         return new self(
-            "Could not send invoice {$id->toString()}: {$previous->getMessage()}",
+            "Could not send invoice {$id->toString()}; the notification provider refused the message.",
             previous: $previous,
         );
     }

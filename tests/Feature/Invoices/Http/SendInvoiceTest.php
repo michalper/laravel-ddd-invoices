@@ -154,13 +154,24 @@ final class SendInvoiceTest extends TestCase
     public function test_a_provider_refusal_leaves_the_invoice_in_draft_with_nothing_recorded(): void
     {
         config()->set('invoices.notifier', 'direct');
-        $driver = $this->failingNotificationDriver();
+
+        // A reason shaped like what a real driver leaks: a host and a credential-ish
+        // fragment. The 502 body must not carry it. `renderable()` runs before the
+        // framework's own rendering, so APP_DEBUG=false would not mask it for us.
+        $driver = $this->failingNotificationDriver('SMTP connect failed: smtp.internal:587 user=postmaster');
 
         $invoice = $this->persistedDraft();
 
-        $this->postJson(route('invoices.send', ['invoiceId' => $invoice->id()->toString()]))
+        $response = $this->postJson(route('invoices.send', ['invoiceId' => $invoice->id()->toString()]))
             ->assertStatus(502)
             ->assertJsonStructure(['message']);
+
+        $response->assertJsonMissingPath('exception');
+
+        $message = $response->json('message');
+        self::assertIsString($message);
+        self::assertStringNotContainsString('smtp.internal', $message);
+        self::assertStringNotContainsString('postmaster', $message);
 
         self::assertSame(1, $driver->calls);
 
