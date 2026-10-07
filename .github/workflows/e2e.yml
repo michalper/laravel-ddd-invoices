@@ -69,12 +69,10 @@ jobs:
           fi
           echo "Application is up."
 
-      # Everything except the concurrency tests, which need a server database and a
-      # forking web server; they get their own job below.
       - name: Run the end-to-end suite
         env:
           E2E_BASE_URL: http://127.0.0.1:8000
-        run: vendor/bin/phpunit --testsuite=E2E --testdox --exclude-filter ConcurrentSend
+        run: vendor/bin/phpunit --testsuite=E2E --testdox
 
       # Proves the outbox actually reaches a fully settled state rather than leaving
       # durable intents behind.
@@ -105,114 +103,6 @@ jobs:
           done
           echo "The outbox did not settle within 60s; the worker is not draining it." >&2
           exit 1
-
-      - name: Show application logs on failure
-        if: failure()
-        run: |
-          tail -n 100 storage/logs/serve.log || true
-          tail -n 100 storage/logs/worker.log || true
-          tail -n 200 storage/logs/laravel.log || true
-
-  # The only job where the concurrency control is actually concurrent. Two things
-  # have to be arranged for these tests to have any power, and both were established
-  # by breaking the code and watching the test react rather than by reasoning:
-  #
-  # 1. PostgreSQL, not SQLite. SQLite has no concurrent writers — the second
-  #    request's transaction waits for the first to commit, then reads `sending` and
-  #    is rejected by the aggregate's in-memory guard, so the conditional UPDATE is
-  #    never reached. On SQLite the test passes even with the compare-and-swap
-  #    deliberately broken.
-  # 2. `--no-reload`. Laravel's ServeCommand refuses to honour PHP_CLI_SERVER_WORKERS
-  #    without it and warns that it is "only creating a single server"
-  #    (ServeCommand::initialize()). A single-process server serialises the requests
-  #    into a sequence that always passes.
-  #
-  # With both in place, replacing the affected-row check with `return true` makes the
-  # test report five accepted sends out of eight instead of one. That is the bug this
-  # job exists to catch.
-  concurrency-control:
-    name: Concurrency on PostgreSQL
-    runs-on: ubuntu-24.04
-
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_DB: invoices
-          POSTGRES_USER: invoices
-          POSTGRES_PASSWORD: invoices
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U invoices"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-
-      redis:
-        image: redis:alpine
-        ports: ['6379:6379']
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.5'
-          extensions: pdo_pgsql, redis
-          coverage: none
-          tools: composer:v2
-
-      - uses: ramsey/composer-install@v4
-
-      # Written into .env rather than passed as job env on purpose: ServeCommand
-      # hands the child server an explicit environment built from $_ENV, so a plain
-      # environment variable does not reliably survive the hop into `php -S`.
-      - name: Prepare a real environment on PostgreSQL
-        run: |
-          cp .env.example .env
-          sed -i 's/^REDIS_HOST=.*/REDIS_HOST=127.0.0.1/' .env
-          sed -i 's/^DB_CONNECTION=.*/DB_CONNECTION=pgsql/' .env
-          {
-            echo "DB_HOST=127.0.0.1"
-            echo "DB_PORT=5432"
-            echo "DB_DATABASE=invoices"
-            echo "DB_USERNAME=invoices"
-            echo "DB_PASSWORD=invoices"
-          } >> .env
-          php artisan migrate --force
-
-      - name: Boot a forking server and a queue worker
-        env:
-          PHP_CLI_SERVER_WORKERS: 8
-        run: |
-          nohup php artisan serve --host=127.0.0.1 --port=8000 --no-reload > storage/logs/serve.log 2>&1 &
-          nohup php artisan queue:work --tries=5 --sleep=1 > storage/logs/worker.log 2>&1 &
-          for _ in $(seq 1 30); do
-            curl -fsS http://127.0.0.1:8000/up > /dev/null && break
-            sleep 1
-          done
-          curl -fsS http://127.0.0.1:8000/up > /dev/null || {
-            echo "Application did not become healthy in time." >&2
-            cat storage/logs/serve.log || true
-            exit 1
-          }
-          # The warning ServeCommand prints when it ignores PHP_CLI_SERVER_WORKERS
-          # would make this job silently meaningless, so it is a failure.
-          if grep -q 'Unable to respect' storage/logs/serve.log; then
-            echo "The server did not fork; these tests would prove nothing." >&2
-            cat storage/logs/serve.log
-            exit 1
-          fi
-
-      - name: Concurrency suite
-        env:
-          E2E_BASE_URL: http://127.0.0.1:8000
-        run: vendor/bin/phpunit --testsuite=E2E --testdox --filter ConcurrentSend
 
       - name: Show application logs on failure
         if: failure()

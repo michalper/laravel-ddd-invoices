@@ -147,13 +147,32 @@ Two levels exist because a property could not be reached any other way:
 - The **database matrix** (`ci.yml`) runs the Feature suite on MySQL and PostgreSQL as well as
   SQLite, because the compare-and-swap's correctness is a claim about every driver. It earned its
   place immediately by finding that product-line ordering was engine-dependent.
-- The **concurrency job** (`e2e.yml`) is the only place a race is actually raced. It needs
-  PostgreSQL — SQLite has no concurrent writers, so the conditional UPDATE is never reached — and
-  `artisan serve --no-reload`, without which Laravel refuses to fork and the requests serialise
-  into a sequence that always passes.
+- The **smoke job** below is the only one that boots the application the way a reviewer does.
 - The **smoke job** (`smoke.yml`) runs `./start.sh` on a fresh clone and walks the lifecycle with
   curl, because everything else boots the application with `artisan serve` and never touches the
   path a reviewer follows.
+
+### Known gap: no test produces a real race
+
+Every race in the suite is simulated sequentially — call `claim()` twice, or stub
+`compareAndSwapStatus()` to return false. That covers the handling of a lost race but never
+produces one, so ADR 0002's conditional UPDATE and ADR 0004's ordering are the two guarantees
+nothing exercises under genuine contention.
+
+An HTTP-level attempt was built and then removed, because measuring it showed it had no power:
+with the affected-row check replaced by `return true`, eight parallel sends still reported a
+single acceptance in 6 runs out of 6. Two things defeat it. SQLite has no concurrent writers at
+all, so the second transaction waits, reads `sending`, and is rejected by the aggregate's
+in-memory guard before the UPDATE is reached. And PHP's built-in server — even with
+`PHP_CLI_SERVER_WORKERS` and `--no-reload`, both of which are required and neither of which is
+obvious — is a development server: under parallel load it returned three HTTP 500s that never
+reached PHP at all, logging nothing and completing in 0.03ms.
+
+Doing this properly does not need a web server. Two database connections with an explicit
+barrier would be deterministic: connection A claims the invoice and holds its transaction open,
+connection B attempts the same conditional UPDATE and must block, then observe zero affected rows
+once A commits. It needs a server engine, a per-driver lock timeout, and a test case that commits
+rather than wrapping itself in `RefreshDatabase`'s transaction.
 
 ## Quality gates
 

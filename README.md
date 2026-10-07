@@ -139,9 +139,13 @@ The module boundaries are enforced, not just documented: `tests/Architecture/` i
 PHPStan rules by phpat, so a domain class reaching for the framework, or Presentation reaching
 into Infrastructure, fails the analysis step above at the offending line.
 
-CI also runs the Feature suite against MySQL and PostgreSQL, a concurrency suite on PostgreSQL
-where eight simultaneous sends must yield exactly one acceptance, and a smoke job that runs
-`./start.sh` on a fresh clone and walks the lifecycle with curl.
+CI also runs the Feature suite against MySQL and PostgreSQL, because the compare-and-swap's
+correctness is a claim about every driver, and a smoke job that runs `./start.sh` on a fresh clone
+and walks the lifecycle with curl.
+
+One gap is deliberate and recorded rather than papered over: no test produces a real race. See
+"Known gap" in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for what was tried, why it was
+removed, and what a deterministic version would take.
 
 ## Notification delivery: `INVOICE_NOTIFIER`
 
