@@ -52,12 +52,18 @@ final readonly class EloquentInvoiceRepository implements InvoiceRepositoryInter
 
             $invoiceId = $invoice->id()->toString();
 
+            // One timestamp for the whole batch, taken once. This is what makes the
+            // comment on InvoiceModel::productLines() — that all lines of one
+            // invoice share a timestamp, so created_at is no tiebreak — literally
+            // true rather than true by rounding.
+            $now = now();
+
             ProductLineModel::query()->insert(array_map(
                 static fn (array $row): array => [
                     ...$row,
                     'invoice_id' => $invoiceId,
-                    'created_at' => now(),
-                    'updated_at' => now(),
+                    'created_at' => $now,
+                    'updated_at' => $now,
                 ],
                 $rows,
             ));
