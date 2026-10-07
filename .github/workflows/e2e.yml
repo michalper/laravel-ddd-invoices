@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # Pinned for the same reason as ci.yml: ubuntu-latest starts moving to Ubuntu
 # 26.04 on 2026-10-19 and setup-php does not list it yet.
 jobs:
@@ -71,15 +75,16 @@ jobs:
         run: vendor/bin/phpunit --testsuite=E2E --testdox
 
       # Proves the worker actually drained the outbox rather than leaving durable
-      # intents behind: anything stalled would be reported here.
+      # intents behind.
+      #
+      # Both flags are load-bearing. Without --minutes=0 the command uses the
+      # configured 15-minute threshold, and every row in a run this short is seconds
+      # old, so the count would be 0 whether or not the worker ever started. Without
+      # --strict the command exits 0 by design, so the step could only be gated by
+      # grepping its prose — which is what this used to do, with an unanchored
+      # pattern that "10 stalled notification(s)" also matched.
       - name: Assert the worker settled every notification
-        run: |
-          output=$(php artisan invoices:reconcile)
-          echo "$output"
-          echo "$output" | grep -q '0 stalled notification' || {
-            echo "The queue worker left notifications unprocessed." >&2
-            exit 1
-          }
+        run: php artisan invoices:reconcile --minutes=0 --strict
 
       - name: Show application logs on failure
         if: failure()

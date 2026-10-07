@@ -5,22 +5,49 @@ on:
     branches: [main]
   pull_request:
 
+# A superseded run proves nothing, so on a pull request the previous one is
+# cancelled instead of competing for runners with the push that replaced it. On
+# main every commit's result is worth keeping, so nothing is cancelled there.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # Pinned to ubuntu-24.04 rather than ubuntu-latest: that label starts moving to
 # Ubuntu 26.04 on 2026-10-19, and shivammathur/setup-php documents 22.04 and
 # 24.04 only, so ubuntu-latest would drift onto an image where PHP 8.5 is not
 # guaranteed to install. Revisit once setup-php lists 26.04.
 jobs:
+  # Was two jobs running the same suite twice, once plain and once under pcov. The
+  # second run was the only one whose result mattered, so the plain one is gone and
+  # the floor is a step rather than a job: a failing step is named just as clearly
+  # in the UI, which was the whole point of splitting them.
   tests:
-    name: Tests (PHP 8.5)
+    name: Tests and coverage floor (PHP 8.5)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
+      # pcov has no prebuilt package for a PHP this new, so setup-php compiles it.
+      # Caching the built extension is the single biggest saving in this workflow.
+      - name: Resolve extension cache key
+        id: extensions
+        uses: shivammathur/cache-extensions@v1
+        with:
+          php-version: '8.5'
+          extensions: pdo_sqlite, sqlite3, pcov
+          key: php-extensions-v1
+
+      - uses: actions/cache@v5
+        with:
+          path: ${{ steps.extensions.outputs.dir }}
+          key: ${{ steps.extensions.outputs.key }}
+          restore-keys: ${{ steps.extensions.outputs.key }}
+
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.5'
-          extensions: pdo_sqlite, sqlite3
-          coverage: none
+          extensions: pdo_sqlite, sqlite3, pcov
+          coverage: pcov
           tools: composer:v2
 
       - uses: ramsey/composer-install@v4
@@ -30,33 +57,35 @@ jobs:
       # created per test class by RefreshDatabase.
       - run: cp .env.example .env
 
-      - run: vendor/bin/phpunit --testdox --display-all-issues
-
-  coverage:
-    name: Coverage floor
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.5'
-          extensions: pdo_sqlite, sqlite3
-          coverage: pcov
-          tools: composer:v2
-
-      - uses: ramsey/composer-install@v4
-
-      - run: cp .env.example .env
-
-      - run: vendor/bin/phpunit --coverage-clover=coverage.xml
+      - name: Test suite
+        run: vendor/bin/phpunit --coverage-clover=coverage.xml --testdox --display-all-issues
 
       # PHPUnit has no built-in floor, and a report nobody gates on is decoration.
-      - run: php tools/check-coverage.php coverage.xml src/Modules/Invoices 95
+      - name: Coverage floor
+        run: php tools/check-coverage.php coverage.xml src/Modules/Invoices 95
 
-  static-analysis:
-    name: PHPStan (level max)
+  # One definition, three jobs. A matrix does not make any single check faster —
+  # every leg is its own runner doing its own install — but it keeps the three
+  # distinct red signals while removing three copies of the same eight steps.
+  quality:
+    name: ${{ matrix.check.name }}
     runs-on: ubuntu-24.04
+    strategy:
+      # Pint failing should not hide what PHPStan thinks.
+      fail-fast: false
+      matrix:
+        check:
+          - id: phpstan
+            name: PHPStan (level max)
+            run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+          - id: pint
+            name: Pint
+            run: vendor/bin/pint --test
+          - id: rector
+            # Reported, never applied in CI: modernisation drift surfaces on the
+            # pull request instead of being rewritten behind the author's back.
+            name: Rector (dry run)
+            run: vendor/bin/rector process --dry-run --no-progress-bar
     steps:
       - uses: actions/checkout@v5
 
@@ -68,38 +97,17 @@ jobs:
 
       - uses: ramsey/composer-install@v4
 
-      - run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
-
-  style:
-    name: Pint
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: shivammathur/setup-php@v2
+      # PHPStan and Rector both keep a result cache under build/ (see tmpDir in
+      # phpstan.neon and withCache in rector.php), which turns a re-run into an
+      # incremental analysis. The exact key hits on a re-run of the same commit;
+      # restore-keys gives a warm start from the previous one. Pint has no cache and
+      # simply finds nothing to restore.
+      - name: Restore analyser cache
+        uses: actions/cache@v5
         with:
-          php-version: '8.5'
-          coverage: none
-          tools: composer:v2
+          path: build
+          key: quality-${{ matrix.check.id }}-${{ hashFiles('composer.lock') }}-${{ github.sha }}
+          restore-keys: |
+            quality-${{ matrix.check.id }}-${{ hashFiles('composer.lock') }}-
 
-      - uses: ramsey/composer-install@v4
-
-      - run: vendor/bin/pint --test
-
-  rector:
-    name: Rector (dry run)
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.5'
-          coverage: none
-          tools: composer:v2
-
-      - uses: ramsey/composer-install@v4
-
-      # Reported, never applied in CI: modernisation drift surfaces on the pull
-      # request instead of being rewritten behind the author's back.
-      - run: vendor/bin/rector process --dry-run --no-progress-bar
+      - run: ${{ matrix.check.run }}

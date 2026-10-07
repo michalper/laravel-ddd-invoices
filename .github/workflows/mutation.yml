@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: mutation-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # Pinned for the same reason as ci.yml: ubuntu-latest starts moving to Ubuntu
 # 26.04 on 2026-10-19 and setup-php does not list it yet.
 jobs:
@@ -14,10 +18,26 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Same reasoning as the tests job: pcov is compiled for a PHP this new, and
+      # this is the other job that needs it.
+      - name: Resolve extension cache key
+        id: extensions
+        uses: shivammathur/cache-extensions@v1
+        with:
+          php-version: '8.5'
+          extensions: pdo_sqlite, sqlite3, pcov
+          key: php-extensions-v1
+
+      - uses: actions/cache@v5
+        with:
+          path: ${{ steps.extensions.outputs.dir }}
+          key: ${{ steps.extensions.outputs.key }}
+          restore-keys: ${{ steps.extensions.outputs.key }}
+
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.5'
-          extensions: pdo_sqlite, sqlite3
+          extensions: pdo_sqlite, sqlite3, pcov
           coverage: pcov
           tools: composer:v2
 
