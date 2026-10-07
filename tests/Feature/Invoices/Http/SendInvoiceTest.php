@@ -21,7 +21,7 @@ final class SendInvoiceTest extends TestCase
     /**
      * The queue is faked here so the intent can be observed in the state it is
      * committed in. Without faking, the worker drains it inside the same test — see
-     * testSendDeliversThroughTheOutboxWorker below.
+     * test_send_delivers_through_the_outbox_worker below.
      */
     public function test_send_claims_the_invoice_and_commits_the_intent_as_pending(): void
     {

@@ -50,5 +50,18 @@ final readonly class InvoiceExceptionMapper
             data: ['message' => $e->getMessage()],
             status: self::STATUSES[$e::class] ?? Response::HTTP_INTERNAL_SERVER_ERROR,
         ));
+
+        // A renderable() callback does not stop reporting, so every routine 404, 409
+        // and 422 was also writing an error-level stack trace to laravel.log — noise
+        // that buries the entries worth reading. These four are expected client
+        // outcomes, not incidents. InvoiceSendFailedException is deliberately NOT
+        // here: a provider refusal is an incident, and its cause reaches the log
+        // through `previous` precisely because the 502 body does not carry it.
+        $exceptions->dontReport([
+            InvoiceNotFoundException::class,
+            InvalidStatusTransitionException::class,
+            InvoiceWithoutProductLinesException::class,
+            InvalidProductLineException::class,
+        ]);
     }
 }

@@ -1,0 +1,9 @@
+# CI-only overlay: identical analysis, plus a cache location inside the workspace so
+# actions/cache can carry the result cache between runs. Locally plain `phpstan
+# analyse` uses the system temp dir and nothing appears in the project directory —
+# the build/ clutter was judged not worth the local speed-up.
+includes:
+    - phpstan.neon
+
+parameters:
+    tmpDir: build/phpstan

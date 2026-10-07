@@ -185,7 +185,7 @@ jobs:
         check:
           - id: phpstan
             name: PHPStan (level max)
-            run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+            run: vendor/bin/phpstan analyse -c phpstan-ci.neon --no-progress --memory-limit=1G
           - id: pint
             name: Pint
             run: vendor/bin/pint --test

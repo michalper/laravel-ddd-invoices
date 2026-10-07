@@ -16,8 +16,8 @@ use Ramsey\Uuid\UuidInterface;
 
 final readonly class OutboxRepository
 {
-    /** Provider errors can be arbitrarily long; the column is not. */
-    public const int MAX_ERROR_LENGTH = 2000;
+    /** Provider errors and operator reasons can be arbitrarily long; the columns are not. */
+    public const int MAX_TEXT_LENGTH = 2000;
 
     /** @param array{to_email: string, subject: string, message: string} $payload */
     public function enqueue(UuidInterface $invoiceId, array $payload): string
@@ -101,7 +101,7 @@ final readonly class OutboxRepository
         // retries of the same message.
         OutboxMessageModel::query()->whereKey($id)->update([
             'attempts' => DB::raw('attempts + 1'),
-            'last_error' => mb_substr($error, 0, self::MAX_ERROR_LENGTH),
+            'last_error' => mb_substr($error, 0, self::MAX_TEXT_LENGTH),
         ]);
     }
 
@@ -113,7 +113,7 @@ final readonly class OutboxRepository
             ->whereIn('status', OutboxStatus::unsettled())
             ->update([
                 'status' => OutboxStatus::Failed->value,
-                'last_error' => mb_substr($error, 0, self::MAX_ERROR_LENGTH),
+                'last_error' => mb_substr($error, 0, self::MAX_TEXT_LENGTH),
             ]);
     }
 
@@ -257,7 +257,7 @@ final readonly class OutboxRepository
             ->where('status', OutboxStatus::Failed->value)
             ->update([
                 'status' => OutboxStatus::Abandoned->value,
-                'resolution' => mb_substr($reason, 0, self::MAX_ERROR_LENGTH),
+                'resolution' => mb_substr($reason, 0, self::MAX_TEXT_LENGTH),
             ]) === 1;
     }
 

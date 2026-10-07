@@ -45,16 +45,20 @@ final class RecordingLogger implements LoggerInterface
     }
 
     /**
-     * Entries for one message, which is what an assertion about a specific signal
-     * actually needs.
+     * Entries matching a level and carrying a context key.
+     *
+     * Deliberately not matched on message text: this project's own stance
+     * (infection.json5) is that log LEVELS are part of the observability contract
+     * and log STRINGS are not, so a test pinned to the wording would contradict it
+     * and break on a reword that changes nothing.
      *
      * @return list<array{level: string, message: string, context: array<string, mixed>}>
      */
-    public function withMessage(string $message): array
+    public function where(string $level, string $contextKey): array
     {
         return array_values(array_filter(
             $this->entries,
-            static fn (array $entry): bool => $entry['message'] === $message,
+            static fn (array $entry): bool => $entry['level'] === $level && array_key_exists($contextKey, $entry['context']),
         ));
     }
 }

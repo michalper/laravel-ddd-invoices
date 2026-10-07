@@ -57,6 +57,9 @@ return RectorConfig::configure()
         PreferPHPUnitThisCallRector::class,
     ])
     ->withImportNames(importShortClasses: false)
-    // Same reasoning as phpstan.neon's tmpDir: a stable path CI can cache, instead
-    // of the system temp dir a fresh runner never carries over.
-    ->withCache(cacheDirectory: __DIR__.'/build/rector');
+    // On CI the cache lives in the workspace so actions/cache can carry it between
+    // runs; locally it stays in the system temp dir so the project directory stays
+    // clean (the same split phpstan-ci.neon makes for PHPStan).
+    ->withCache(cacheDirectory: getenv('CI') !== false
+        ? __DIR__.'/build/rector'
+        : sys_get_temp_dir().'/rector-laravel-ddd-invoices');

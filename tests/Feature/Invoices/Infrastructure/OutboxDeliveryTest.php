@@ -168,8 +168,11 @@ final class OutboxDeliveryTest extends TestCase
 
         $this->reconcile()->assertSuccessful();
 
-        self::assertCount(1, $logger->withMessage('Re-dispatching stalled notifications failed partway; reporting continues.'));
-        self::assertCount(1, $logger->withMessage('Invoice notification needs attention.'));
+        // The dispatch failure is an error carrying the plan it abandoned; the
+        // failed message still gets its critical entry. Level + context key, not
+        // wording — log strings are not contract here (see infection.json5).
+        self::assertCount(1, $logger->where('error', 'planned'));
+        self::assertCount(1, $logger->where('critical', 'outbox_id'));
     }
 
     /** The per-run bound must announce itself, or a truncated run looks finished. */
@@ -287,12 +290,13 @@ final class OutboxDeliveryTest extends TestCase
 
         $this->reconcile()->assertSuccessful();
 
+        // Per-row entries carry outbox_id; the one summary entry carries the total.
         self::assertCount(
             ReconcileInvoiceSendingCommand::FAILED_REPORT_LIMIT,
-            $logger->withMessage('Invoice notification needs attention.'),
+            $logger->where('critical', 'outbox_id'),
         );
 
-        $summary = $logger->withMessage('More permanently failed notifications than this run reported.');
+        $summary = $logger->where('critical', 'total');
         self::assertCount(1, $summary);
         self::assertSame($overTheCap, $summary[0]['context']['total']);
     }
@@ -391,7 +395,7 @@ final class OutboxDeliveryTest extends TestCase
 
         $message = $this->outbox()->find($messageId);
         self::assertNotNull($message);
-        self::assertSame(OutboxRepository::MAX_ERROR_LENGTH, mb_strlen((string) $message->last_error));
+        self::assertSame(OutboxRepository::MAX_TEXT_LENGTH, mb_strlen((string) $message->last_error));
     }
 
     /** @param array<string, bool|string> $options */

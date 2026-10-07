@@ -15,10 +15,6 @@ services:
 parameters:
     level: max
 
-    # A stable location so CI can cache the result cache between runs; PHPStan's
-    # default is the system temp dir, which a fresh runner never carries over.
-    tmpDir: build/phpstan
-
     paths:
         - src
         - tests

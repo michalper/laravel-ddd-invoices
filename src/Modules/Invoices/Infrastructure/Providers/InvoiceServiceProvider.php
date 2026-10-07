@@ -7,6 +7,7 @@ namespace Modules\Invoices\Infrastructure\Providers;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
+use InvalidArgumentException;
 use Modules\Invoices\Application\Listeners\WebhookDeliveredListener;
 use Modules\Invoices\Application\Ports\InvoiceNotifierInterface;
 use Modules\Invoices\Application\Ports\TransactionManagerInterface;
@@ -42,13 +43,24 @@ final class InvoiceServiceProvider extends ServiceProvider
         // The one line that swaps durable delivery for a direct provider call. The
         // application service is identical either way — that is the whole point of
         // the port.
+        //
+        // Unknown values are rejected rather than defaulted. Two places read this
+        // setting with opposite fallbacks — this binding treated everything except
+        // 'direct' as outbox, while the reconcile command treats everything except
+        // 'outbox' as not-outbox — so a typo like INVOICE_NOTIFIER=Outbox would have
+        // run the outbox while silently switching off the orphan probe, the one
+        // alert that assumption-breakage depends on.
         $this->app->scoped(InvoiceNotifierInterface::class, static function ($app): InvoiceNotifierInterface {
             /** @var Application $app */
-            return $app->make(
-                $app->make('config')->get('invoices.notifier') === 'direct'
-                    ? NotificationFacadeInvoiceNotifier::class
-                    : OutboxInvoiceNotifier::class,
-            );
+            $notifier = $app->make('config')->get('invoices.notifier');
+
+            return $app->make(match ($notifier) {
+                'direct' => NotificationFacadeInvoiceNotifier::class,
+                'outbox' => OutboxInvoiceNotifier::class,
+                default => throw new InvalidArgumentException(
+                    sprintf("INVOICE_NOTIFIER must be 'outbox' or 'direct', got '%s'.", is_scalar($notifier) ? (string) $notifier : get_debug_type($notifier)),
+                ),
+            });
         });
     }
 

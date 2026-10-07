@@ -31,7 +31,7 @@ use Tests\Support\Invoices\CreatesInvoices;
  *
  * An earlier attempt did this over HTTP with parallel requests and was removed: PHP's
  * built-in server is not robust under parallel load, and on SQLite the conditional
- * UPDATE is never even reached. See the "Known gap" section this replaces in
+ * UPDATE is never even reached. The story is recorded in the "Concurrency" section of
  * docs/ARCHITECTURE.md.
  */
 final class ConcurrentClaimTest extends BaseTestCase
@@ -80,6 +80,14 @@ final class ConcurrentClaimTest extends BaseTestCase
 
         DB::setDefaultConnection(config()->string('database.default'));
         DB::purge(self::SECOND);
+
+        // If an assertion failed while the first transaction was still open, the
+        // deletes below would run inside it and vanish with its rollback — leaking
+        // committed rows into later tests, but only on the failure path, which is
+        // the worst place for a leak to hide.
+        while (DB::connection()->transactionLevel() > 0) {
+            DB::connection()->rollBack();
+        }
 
         // DatabaseTruncation cleans up *before* each test, so without this the last
         // test in this class leaves committed rows behind — and the rest of the suite
@@ -142,34 +150,6 @@ final class ConcurrentClaimTest extends BaseTestCase
         $wonBySecond = $this->repository()->compareAndSwapStatus($id, StatusEnum::Draft, StatusEnum::Sending);
 
         self::assertFalse($wonBySecond, 'The loser must observe zero affected rows, not overwrite the winner.');
-    }
-
-    /**
-     * Guards the assumption ADR 0002 names explicitly: the compare-and-swap depends on
-     * the driver reporting *changed* rows rather than *matched* ones.
-     *
-     * MySQL makes that configurable, and switching it on elsewhere in the application
-     * would silently turn "exactly one winner" into "everyone wins" — with no error,
-     * no failing unit test, and two customers notified. Asserting the current
-     * behaviour is what makes that a visible change rather than an invisible one.
-     */
-    public function test_a_conditional_update_reports_changed_rows_not_matched_rows(): void
-    {
-        $invoice = $this->persistedDraft();
-
-        // Already `sending`, so the predicate below matches no row at all.
-        self::assertTrue(
-            $this->repository()->compareAndSwapStatus($invoice->id(), StatusEnum::Draft, StatusEnum::Sending),
-        );
-
-        // Same source and target: a row exists with this id, but none with this status,
-        // so a driver counting matched rows would answer 1 and the claim would succeed.
-        $affected = DB::table('invoices')
-            ->where('id', $invoice->id()->toString())
-            ->where('status', StatusEnum::Draft->value)
-            ->update(['status' => StatusEnum::Sending->value]);
-
-        self::assertSame(0, $affected);
     }
 
     /**

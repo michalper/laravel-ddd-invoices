@@ -20,8 +20,8 @@ use Psr\Log\LoggerInterface;
  */
 final class RetryOutboxMessageCommand extends Command
 {
-    /** Matches the reconciler's reporting bound: one run should not try to re-drive a year of backlog. */
-    private const int BATCH = 50;
+    /** The reconciler's reporting bound, referenced rather than copied, so the two cannot drift apart. */
+    private const int BATCH = ReconcileInvoiceSendingCommand::FAILED_REPORT_LIMIT;
 
     #[\Override]
     protected $signature = 'invoices:outbox:retry
