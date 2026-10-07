@@ -54,7 +54,14 @@ if ($statements === 0) {
 $percent = round($covered / $statements * 100, 2);
 $floor = (float) $minimum;
 
-printf("Line coverage for %s: %.2f%% (%d/%d statements), floor %.2f%%\n", $prefix, $percent, $covered, $statements, $floor);
+printf(
+    "Line coverage for %s: %.2f%% (%d/%d statements), floor %.2f%%\n",
+    $prefix,
+    $percent,
+    $covered,
+    $statements,
+    $floor,
+);
 
 if ($percent < $floor) {
     fwrite(STDERR, sprintf("Coverage %.2f%% is below the required %.2f%%.\n", $percent, $floor));

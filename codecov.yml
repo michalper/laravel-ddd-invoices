@@ -1,0 +1,32 @@
+# Scope, mirrored from sonar-project.properties for the same reasons: three things
+# consume the coverage report, and they have to agree on what "the project" is.
+#
+# src/Modules/Notifications is the mock that shipped with the task. Its DummyDriver
+# shows 0% by design — the tests swap it for recording fakes at the driver seam, which
+# is the whole point of that seam — and the brief says not to treat the module as a
+# reference. The rest is framework scaffolding with no behaviour of its own; the gate
+# that actually fails builds is tools/check-coverage.php over src/Modules/Invoices.
+ignore:
+  - src/Modules/Notifications/**
+  - bootstrap/**
+  - config/**
+  - database/**
+  - public/**
+  - routes/**
+  - tools/**
+
+coverage:
+  status:
+    project:
+      default:
+        # The enforced floor lives in CI (95 over the module); this status mirrors it
+        # with a small tolerance so ordinary noise cannot flip the badge.
+        target: 95%
+        threshold: 2%
+    patch:
+      default:
+        target: 90%
+
+comment:
+  layout: condensed_header, diff, files
+  require_changes: true

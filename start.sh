@@ -18,7 +18,7 @@ touch database/database.sqlite
 # yet, because it is gitignored. Bootstrap it in a throwaway Composer container so
 # no PHP on the host is required. The in-container install below still runs, which
 # is what resolves platform-specific packages and executes the post-install scripts.
-if [ ! -d vendor/laravel/sail/runtimes ]; then
+if [[ ! -d vendor/laravel/sail/runtimes ]]; then
     echo '==> Bootstrapping vendor/ so the Sail build context exists...'
     # --user matters on Linux: without it the container writes vendor/ as root on
     # the bind mount, and the host's own composer, vendor/bin/* or IDE indexer then
@@ -46,13 +46,13 @@ docker compose up --build --remove-orphans -d
 docker compose exec -T app composer install
 docker compose exec -T app php artisan migrate:fresh
 
-if [ "$seed_demo" = true ]; then
+if [[ "$seed_demo" == true ]]; then
     docker compose exec -T app php artisan db:seed --class=DemoInvoiceSeeder
 fi
 
 echo
 echo "==> Ready: ${APP_URL:-http://localhost:8080}"
-if [ "$seed_demo" != true ]; then
+if [[ "$seed_demo" != true ]]; then
     echo "    Database is empty. Re-run with ./start.sh --demo for a sample invoice."
 fi
 echo "    Queue worker is running, so the outbox drains on its own."
