@@ -1,0 +1,24 @@
+version: 2
+
+# The counterpart to pinning actions by commit SHA. A SHA is immutable, which is the
+# security property we want — a mutable tag like @v5 can be re-pointed by a
+# compromised maintainer account — but it also means nothing updates on its own.
+# Without this file the pins silently rot, and a stale pin is how a workflow ends up
+# on a runtime the runners no longer have (which is exactly what happened to
+# ramsey/composer-install@v3 and Node 20).
+#
+# Dependabot rewrites both the SHA and the trailing version comment, so the comments
+# stay honest.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      # One pull request for a routine sweep instead of five. A major bump still
+      # arrives on its own, because those are the ones worth reading.
+      actions-minor:
+        patterns: ['*']
+        update-types: [minor, patch]

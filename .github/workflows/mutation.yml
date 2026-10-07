@@ -16,32 +16,32 @@ jobs:
     name: Infection
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       # Same reasoning as the tests job: pcov is compiled for a PHP this new, and
       # this is the other job that needs it.
       - name: Resolve extension cache key
         id: extensions
-        uses: shivammathur/cache-extensions@v1
+        uses: shivammathur/cache-extensions@22e24453af1bf3851994136f122ce065ab828a74 # 1.15.2
         with:
           php-version: '8.5'
           extensions: pdo_sqlite, sqlite3, pcov
           key: php-extensions-v1
 
-      - uses: actions/cache@v5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ${{ steps.extensions.outputs.dir }}
           key: ${{ steps.extensions.outputs.key }}
           restore-keys: ${{ steps.extensions.outputs.key }}
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
         with:
           php-version: '8.5'
           extensions: pdo_sqlite, sqlite3, pcov
           coverage: pcov
           tools: composer:v2
 
-      - uses: ramsey/composer-install@v4
+      - uses: ramsey/composer-install@26d8a556604053a9612623447203a691f406fbe6 # v4
 
       - run: cp .env.example .env
 

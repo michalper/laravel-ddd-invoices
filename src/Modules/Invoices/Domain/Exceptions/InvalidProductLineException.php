@@ -29,14 +29,20 @@ final class InvalidProductLineException extends InvoiceException
      */
     public static function lineTotalOutOfRange(int $quantity, int $unitPrice): self
     {
-        return new self(
-            "Product line total is too large to represent: {$quantity} x {$unitPrice} exceeds the maximum of ".PHP_INT_MAX.'.',
-        );
+        return new self(sprintf(
+            'Product line total is too large to represent: %d x %d exceeds the maximum of %d.',
+            $quantity,
+            $unitPrice,
+            PHP_INT_MAX,
+        ));
     }
 
     /** The same hazard one level up, where the line totals are summed. */
     public static function invoiceTotalOutOfRange(): self
     {
-        return new self('The invoice total is too large to represent; reduce the quantities or the number of product lines.');
+        return new self(
+            'The invoice total is too large to represent; '
+            .'reduce the quantities or the number of product lines.',
+        );
     }
 }

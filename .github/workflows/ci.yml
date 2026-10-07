@@ -24,33 +24,46 @@ jobs:
   tests:
     name: Tests and coverage floor (PHP 8.5)
     runs-on: ubuntu-24.04
+
+    # Read through env rather than referenced directly in `if:`, because a step
+    # condition cannot see the secrets context. This is what lets the analysis steps
+    # below be skipped cleanly on a fork, or before a token has been added, instead
+    # of failing the build.
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          # Sonar needs real history to attribute findings to commits and to work out
+          # what "new code" is. A shallow clone silently degrades both.
+          fetch-depth: 0
 
       # pcov has no prebuilt package for a PHP this new, so setup-php compiles it.
       # Caching the built extension is the single biggest saving in this workflow.
       - name: Resolve extension cache key
         id: extensions
-        uses: shivammathur/cache-extensions@v1
+        uses: shivammathur/cache-extensions@22e24453af1bf3851994136f122ce065ab828a74 # 1.15.2
         with:
           php-version: '8.5'
           extensions: pdo_sqlite, sqlite3, pcov
           key: php-extensions-v1
 
-      - uses: actions/cache@v5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ${{ steps.extensions.outputs.dir }}
           key: ${{ steps.extensions.outputs.key }}
           restore-keys: ${{ steps.extensions.outputs.key }}
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
         with:
           php-version: '8.5'
           extensions: pdo_sqlite, sqlite3, pcov
           coverage: pcov
           tools: composer:v2
 
-      - uses: ramsey/composer-install@v4
+      - uses: ramsey/composer-install@26d8a556604053a9612623447203a691f406fbe6 # v4
 
       # .env.example ships a usable APP_KEY, so no key:generate is needed. No
       # migrate step either: the suite runs against an in-memory SQLite database
@@ -58,11 +71,30 @@ jobs:
       - run: cp .env.example .env
 
       - name: Test suite
-        run: vendor/bin/phpunit --coverage-clover=coverage.xml --testdox --display-all-issues
+        run: vendor/bin/phpunit --coverage-clover=coverage.xml --log-junit=junit.xml --testdox --display-all-issues
 
       # PHPUnit has no built-in floor, and a report nobody gates on is decoration.
+      # This gate is deliberately local: it fails the build on its own, without
+      # depending on a third-party service being reachable or configured.
       - name: Coverage floor
         run: php tools/check-coverage.php coverage.xml src/Modules/Invoices 95
+
+      - name: Upload coverage to Codecov
+        if: env.CODECOV_TOKEN != ''
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
+
+      # Configuration lives in sonar-project.properties, including why two rules are
+      # excluded there. Automatic Analysis has to be off in the SonarCloud project or
+      # it competes with this and that file is ignored.
+      - name: SonarCloud analysis
+        if: env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   # The claim this module's concurrency control rests on is that a conditional
   # UPDATE checked by affected-row count behaves the same on every engine (see
@@ -114,16 +146,16 @@ jobs:
           --health-retries 20
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
         with:
           php-version: '8.5'
           extensions: pdo_mysql, pdo_pgsql
           coverage: none
           tools: composer:v2
 
-      - uses: ramsey/composer-install@v4
+      - uses: ramsey/composer-install@26d8a556604053a9612623447203a691f406fbe6 # v4
 
       - run: cp .env.example .env
 
@@ -163,15 +195,15 @@ jobs:
             name: Rector (dry run)
             run: vendor/bin/rector process --dry-run --no-progress-bar
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
         with:
           php-version: '8.5'
           coverage: none
           tools: composer:v2
 
-      - uses: ramsey/composer-install@v4
+      - uses: ramsey/composer-install@26d8a556604053a9612623447203a691f406fbe6 # v4
 
       # PHPStan and Rector both keep a result cache under build/ (see tmpDir in
       # phpstan.neon and withCache in rector.php), which turns a re-run into an
@@ -179,7 +211,7 @@ jobs:
       # restore-keys gives a warm start from the previous one. Pint has no cache and
       # simply finds nothing to restore.
       - name: Restore analyser cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: build
           key: quality-${{ matrix.check.id }}-${{ hashFiles('composer.lock') }}-${{ github.sha }}

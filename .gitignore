@@ -28,3 +28,4 @@ yarn-error.log
 
 # PHPStan and Rector result caches.
 /build
+/junit.xml

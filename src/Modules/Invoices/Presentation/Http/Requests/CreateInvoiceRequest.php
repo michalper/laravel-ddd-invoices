@@ -52,7 +52,13 @@ final class CreateInvoiceRequest extends FormRequest
      */
     public function toCommand(): CreateInvoiceCommand
     {
-        /** @var array{customer_name: string, customer_email: string, product_lines?: list<array{name: string, quantity: int, unit_price: int}>} $data */
+        /**
+         * @var array{
+         *     customer_name: string,
+         *     customer_email: string,
+         *     product_lines?: list<array{name: string, quantity: int, unit_price: int}>
+         * } $data
+         */
         $data = $this->validated();
 
         return new CreateInvoiceCommand(
