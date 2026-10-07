@@ -1,0 +1,44 @@
+# Baseline for code that came with the task, not code written for it.
+#
+# Every entry below is in tests/Unit/Notification/*, the test files shipped with the
+# exercise. They use $this->createMock() without an intersection-type annotation, so
+# static analysis cannot see the mock API on the returned object. The task README
+# states the Notifications module is a deliberately simple mock and should not be
+# treated as a reference, so it is left exactly as delivered rather than rewritten to
+# satisfy an analyser the author did not run.
+#
+# Everything under src/Modules/Invoices and tests/{Unit,Feature,E2E}/Invoices passes
+# level max with no entries here. If this file grows an entry for code written for
+# this task, that is a bug to fix, not to baseline.
+
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Call to an undefined method Modules\\Notifications\\Infrastructure\\Drivers\\DriverInterface\:\:expects\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: tests/Unit/Notification/Facades/NotificationFacadeTest.php
+
+		-
+			message: '#^Cannot call method method\(\) on mixed\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: tests/Unit/Notification/Facades/NotificationFacadeTest.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Contracts\\Events\\Dispatcher\:\:expects\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: tests/Unit/Notification/Services/NotificationServiceTest.php
+
+		-
+			message: '#^Cannot call method method\(\) on mixed\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: tests/Unit/Notification/Services/NotificationServiceTest.php
+
+		-
+			message: '#^Cannot call method with\(\) on mixed\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: tests/Unit/Notification/Services/NotificationServiceTest.php

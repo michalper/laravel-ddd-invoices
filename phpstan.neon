@@ -1,0 +1,17 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    - phpstan-baseline.neon
+
+parameters:
+    level: max
+
+    paths:
+        - src
+        - tests
+        - config/invoices.php
+
+    # The provided Notifications module is out of scope: the task README calls it a
+    # deliberately simple mock and tells candidates not to treat it as a reference,
+    # so it is left exactly as delivered. Anything it reports lives in the baseline
+    # with that note rather than being "fixed" in someone else's code.
+    treatPhpDocTypesAsCertain: false
