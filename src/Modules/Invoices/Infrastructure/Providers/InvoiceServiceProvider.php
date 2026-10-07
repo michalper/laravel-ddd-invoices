@@ -53,12 +53,13 @@ final class InvoiceServiceProvider extends ServiceProvider
         $this->app->scoped(InvoiceNotifierInterface::class, static function ($app): InvoiceNotifierInterface {
             /** @var Application $app */
             $notifier = $app->make('config')->get('invoices.notifier');
+            $described = is_scalar($notifier) ? (string) $notifier : get_debug_type($notifier);
 
             return $app->make(match ($notifier) {
                 'direct' => NotificationFacadeInvoiceNotifier::class,
                 'outbox' => OutboxInvoiceNotifier::class,
                 default => throw new InvalidArgumentException(
-                    sprintf("INVOICE_NOTIFIER must be 'outbox' or 'direct', got '%s'.", is_scalar($notifier) ? (string) $notifier : get_debug_type($notifier)),
+                    "INVOICE_NOTIFIER must be 'outbox' or 'direct', got '{$described}'.",
                 ),
             });
         });
