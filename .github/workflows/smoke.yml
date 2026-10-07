@@ -1,0 +1,101 @@
+name: Smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Pinned for the same reason as ci.yml: ubuntu-latest starts moving to Ubuntu
+# 26.04 on 2026-10-19 and the Sail runtime image is built for 24.04.
+jobs:
+  # The end-to-end job boots the application with `artisan serve`, which means the
+  # path a reviewer actually follows — ./start.sh, docker compose, the Sail image —
+  # is the one thing CI never exercised. Two real bugs have already lived in it: the
+  # build failing on a fresh clone because vendor/ is gitignored, and the compose
+  # file reading WWWUSER/WWWGROUP that nothing exports.
+  #
+  # This is deliberately the slow job. It builds an image and boots a stack, so it
+  # is bounded rather than trusted to finish.
+  start-sh:
+    name: ./start.sh on a fresh clone
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      # The whole point is the fresh-clone path, so assert it really is one. A
+      # cached vendor/ or a leftover .env would silently skip the bootstrap this
+      # job exists to cover.
+      - name: Assert this is a fresh clone
+        run: |
+          test ! -d vendor || { echo "vendor/ already exists; the bootstrap path would be skipped." >&2; exit 1; }
+          test ! -f .env  || { echo ".env already exists; cp -n would be a no-op." >&2; exit 1; }
+
+      - name: Run the documented setup
+        run: ./start.sh
+
+      # Not a health check: the full documented lifecycle, through the stack
+      # start.sh just built, using nothing but curl.
+      - name: Walk the lifecycle over HTTP
+        run: |
+          set -euo pipefail
+          base=http://localhost:8080
+
+          created=$(curl -fsS -X POST "$base/api/invoices" \
+            -H 'Content-Type: application/json' -H 'Accept: application/json' \
+            -d '{"customer_name":"Ada Lovelace","customer_email":"ada@example.com","product_lines":[{"name":"Widget","quantity":2,"unit_price":500}]}')
+          echo "$created"
+
+          id=$(echo "$created" | jq -r '.data.id')
+          test "$id" != null && test -n "$id"
+          test "$(echo "$created" | jq -r '.data.status')" = draft
+          test "$(echo "$created" | jq -r '.data.total_price')" = 1000
+
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$base/api/invoices/$id/send" -H 'Accept: application/json')
+          test "$code" = 202 || { echo "send answered $code, expected 202" >&2; exit 1; }
+
+          # The provider confirms delivery on the webhook the Notifications module
+          # exposes; the Invoices listener is what turns that into the terminal state.
+          curl -fsS -o /dev/null "$base/api/notification/hook/delivered/$id" -H 'Accept: application/json'
+
+          status=''
+          for _ in $(seq 1 30); do
+            status=$(curl -fsS "$base/api/invoices/$id" -H 'Accept: application/json' | jq -r '.data.status')
+            [ "$status" = sent-to-client ] && break
+            sleep 2
+          done
+          test "$status" = sent-to-client || { echo "invoice stuck in '$status'" >&2; exit 1; }
+
+          echo "Lifecycle completed: draft -> sending -> sent-to-client."
+
+      # The lifecycle above would pass even with no worker running, because the
+      # webhook path is synchronous. This is what proves the compose worker is
+      # actually draining the outbox — the reason a worker is in the compose file at
+      # all. Polled for the same reason as in e2e.yml: the job finishes moments after
+      # dispatching, so a single check races the worker rather than testing it.
+      - name: Assert the compose worker drained the outbox
+        run: |
+          for _ in $(seq 1 30); do
+            if docker compose exec -T app php artisan invoices:reconcile --minutes=0 --strict; then
+              echo "Outbox fully settled by the compose worker."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "The compose queue worker did not drain the outbox." >&2
+          docker compose logs --tail=100 queue || true
+          exit 1
+
+      - name: Show container logs on failure
+        if: failure()
+        run: |
+          docker compose ps || true
+          docker compose logs --tail=200 || true
+
+      - name: Tear the stack down
+        if: always()
+        run: docker compose down --volumes --remove-orphans || true

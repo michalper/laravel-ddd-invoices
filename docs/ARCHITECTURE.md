@@ -134,10 +134,26 @@ locking.
   nothing about the application's internals, not even its container, and talk to a running
   instance over the network. Excluded from the default run by `defaultTestSuite` in
   `phpunit.xml`; needs `E2E_BASE_URL`.
+- `tests/Architecture/` — the layering, enforced rather than described. Not PHPUnit tests: phpat
+  compiles them into PHPStan rules, so they run inside the analysis step and a violation is
+  reported at the offending line. Eight rules, each corresponding to a decision in `docs/adr/`.
 - `tests/Support/Invoices/` — `CreatesInvoices` (the shared trait), `RecordingDriver`,
   `RecordingLogger`, `SpyNotifier`, `ThrowingDriver`, `CallLog`,
   `ImmediateTransactionManager`. Fakes rather than doubles where nothing is verified through the
   doubling API.
+
+Two levels exist because a property could not be reached any other way:
+
+- The **database matrix** (`ci.yml`) runs the Feature suite on MySQL and PostgreSQL as well as
+  SQLite, because the compare-and-swap's correctness is a claim about every driver. It earned its
+  place immediately by finding that product-line ordering was engine-dependent.
+- The **concurrency job** (`e2e.yml`) is the only place a race is actually raced. It needs
+  PostgreSQL — SQLite has no concurrent writers, so the conditional UPDATE is never reached — and
+  `artisan serve --no-reload`, without which Laravel refuses to fork and the requests serialise
+  into a sequence that always passes.
+- The **smoke job** (`smoke.yml`) runs `./start.sh` on a fresh clone and walks the lifecycle with
+  curl, because everything else boots the application with `artisan serve` and never touches the
+  path a reviewer follows.
 
 ## Quality gates
 

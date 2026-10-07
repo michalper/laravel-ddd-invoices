@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# docker-compose.yml passes these into the Sail image build, where the Dockerfile
+# runs `groupadd -g $WWWGROUP`. Sail's own `sail` wrapper exports them; nothing else
+# does, so a bare ./start.sh on a fresh clone would fail the build with an empty
+# argument. Defaulting them here is what makes the documented one-command setup
+# actually be one command.
+export WWWUSER="${WWWUSER:-$(id -u)}"
+export WWWGROUP="${WWWGROUP:-$(id -g)}"
+
 cp -n .env.example .env
 touch database/database.sqlite
 

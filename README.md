@@ -128,12 +128,20 @@ harmless.
 The quality gates, all of which CI runs:
 
 ```bash
-vendor/bin/phpstan analyse        # level max, no baseline entries for this module
+vendor/bin/phpstan analyse        # level max, plus the architecture rules
 vendor/bin/pint --test            # style, check only
 vendor/bin/rector process --dry-run
 vendor/bin/infection --threads=max   # mutation score, gated at 75 MSI
 php tools/check-coverage.php coverage.xml src/Modules/Invoices 95
 ```
+
+The module boundaries are enforced, not just documented: `tests/Architecture/` is compiled into
+PHPStan rules by phpat, so a domain class reaching for the framework, or Presentation reaching
+into Infrastructure, fails the analysis step above at the offending line.
+
+CI also runs the Feature suite against MySQL and PostgreSQL, a concurrency suite on PostgreSQL
+where eight simultaneous sends must yield exactly one acceptance, and a smoke job that runs
+`./start.sh` on a fresh clone and walks the lifecycle with curl.
 
 ## Notification delivery: `INVOICE_NOTIFIER`
 
