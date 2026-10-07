@@ -11,7 +11,10 @@ use Modules\Invoices\Application\Listeners\WebhookDeliveredListener;
 use Modules\Invoices\Application\Ports\InvoiceNotifierInterface;
 use Modules\Invoices\Application\Ports\TransactionManagerInterface;
 use Modules\Invoices\Domain\Repositories\InvoiceRepositoryInterface;
+use Modules\Invoices\Infrastructure\Console\AbandonOutboxMessageCommand;
+use Modules\Invoices\Infrastructure\Console\PruneOutboxPayloadsCommand;
 use Modules\Invoices\Infrastructure\Console\ReconcileInvoiceSendingCommand;
+use Modules\Invoices\Infrastructure\Console\RetryOutboxMessageCommand;
 use Modules\Invoices\Infrastructure\Notifications\NotificationFacadeInvoiceNotifier;
 use Modules\Invoices\Infrastructure\Notifications\OutboxInvoiceNotifier;
 use Modules\Invoices\Infrastructure\Persistence\DatabaseTransactionManager;
@@ -58,7 +61,12 @@ final class InvoiceServiceProvider extends ServiceProvider
         Event::listen(WebhookDeliveredEvent::class, WebhookDeliveredListener::class);
 
         if ($this->app->runningInConsole()) {
-            $this->commands([ReconcileInvoiceSendingCommand::class]);
+            $this->commands([
+                ReconcileInvoiceSendingCommand::class,
+                RetryOutboxMessageCommand::class,
+                AbandonOutboxMessageCommand::class,
+                PruneOutboxPayloadsCommand::class,
+            ]);
         }
     }
 }

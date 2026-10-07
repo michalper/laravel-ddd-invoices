@@ -21,7 +21,18 @@ enum OutboxStatus: string
     case Processing = 'processing';
 
     case Processed = 'processed';
+
+    /** Retries exhausted. Still needs a human; the reconciler alerts on exactly this. */
     case Failed = 'failed';
+
+    /**
+     * A human looked at a failed message and decided not to pursue it.
+     *
+     * Terminal like Failed, but acknowledged — which is the whole point. Without this
+     * state the only way to stop a resolved problem alerting on every reconcile run
+     * forever is to delete the row, losing the record that it happened at all.
+     */
+    case Abandoned = 'abandoned';
 
     /**
      * The two states a row can still move out of, and therefore the guard every
@@ -32,5 +43,19 @@ enum OutboxStatus: string
     public static function unsettled(): array
     {
         return [self::Pending->value, self::Processing->value];
+    }
+
+    /**
+     * Rows whose story is over and whose payload is therefore no longer needed.
+     *
+     * Failed is deliberately absent: it is terminal but unresolved, and redacting the
+     * payload of a message somebody still has to deal with would destroy the evidence
+     * they need.
+     *
+     * @return list<string>
+     */
+    public static function resolved(): array
+    {
+        return [self::Processed->value, self::Abandoned->value];
     }
 }

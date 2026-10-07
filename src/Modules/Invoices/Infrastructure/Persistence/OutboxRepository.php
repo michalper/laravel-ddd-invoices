@@ -173,6 +173,93 @@ final readonly class OutboxRepository
     }
 
     /**
+     * Puts a permanently failed message back in the queue's path.
+     *
+     * This is the remedy the reconciler could previously only wish for: it reported a
+     * failed message as critical on every run, but `failed` was terminal, so an
+     * operator who had fixed the provider outage had no supported way to say "try
+     * again" — only raw SQL against production.
+     *
+     * Guarded on `failed`, so it cannot resurrect a message that is already in flight
+     * or one somebody else abandoned on purpose. `attempts` is deliberately left
+     * alone: it is the history of what this message cost, not a quota to reset.
+     */
+    public function reopen(string $id): bool
+    {
+        return OutboxMessageModel::query()
+            ->whereKey($id)
+            ->where('status', OutboxStatus::Failed->value)
+            ->update([
+                'status' => OutboxStatus::Pending->value,
+                'resolution' => null,
+            ]) === 1;
+    }
+
+    /**
+     * Records that a human decided not to pursue a failed message.
+     *
+     * Also guarded on `failed`: abandoning anything else would be hiding a live
+     * problem rather than closing a resolved one.
+     */
+    public function abandon(string $id, string $reason): bool
+    {
+        return OutboxMessageModel::query()
+            ->whereKey($id)
+            ->where('status', OutboxStatus::Failed->value)
+            ->update([
+                'status' => OutboxStatus::Abandoned->value,
+                'resolution' => mb_substr($reason, 0, self::MAX_ERROR_LENGTH),
+            ]) === 1;
+    }
+
+    /**
+     * Resolved rows still carrying a payload, oldest first.
+     *
+     * The payload holds the customer's name and e-mail, so an outbox nobody prunes is
+     * a second copy of personal data living outside whatever retention policy applies
+     * to invoices themselves. Bounded, because this runs on a schedule and a run that
+     * tries to redact a year of backlog in one statement is a run that times out.
+     *
+     * @return list<string>
+     */
+    public function redactable(CarbonInterface $olderThan, int $limit): array
+    {
+        /** @var list<string> */
+        return OutboxMessageModel::query()
+            ->whereIn('status', OutboxStatus::resolved())
+            ->whereNull('redacted_at')
+            ->where('updated_at', '<=', $olderThan)
+            ->orderBy('updated_at')
+            ->limit($limit)
+            ->pluck('id')
+            ->all();
+    }
+
+    /**
+     * Empties the payload but keeps the row.
+     *
+     * Deleting would take the audit trail with it — that this invoice was notified,
+     * when, and after how many attempts is worth keeping long after the message body
+     * is not. `redacted_at` is what makes the empty payload legible as a decision
+     * rather than a bug, and what stops the next run redacting the same rows again.
+     *
+     * @param  list<string>  $ids
+     */
+    public function redact(array $ids): int
+    {
+        if ($ids === []) {
+            return 0;
+        }
+
+        return OutboxMessageModel::query()
+            ->whereIn('id', $ids)
+            ->update([
+                'payload' => [],
+                'redacted_at' => now(),
+            ]);
+    }
+
+    /**
      * Invoices that claimed a send but have no outbox row at all — the one gap the
      * outbox cannot close by itself, because it means the row never got written
      * despite the status change committing. Should be impossible given both happen

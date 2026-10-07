@@ -75,8 +75,10 @@ Four layers, with dependencies pointing inwards only:
   named `*Model` and never leave this namespace
 - `Persistence/Eloquent/InvoiceMapper.php` — the whole cost of keeping Eloquent out of the
   domain, about sixty lines
-- `Persistence/Eloquent/OutboxStatus.php` — `pending`, `processing`, `processed`, `failed`, plus
-  `unsettled()`, the guard every terminal write uses
+- `Persistence/Eloquent/OutboxStatus.php` — `pending`, `processing`, `processed`, `failed`,
+  `abandoned`, plus `unsettled()` (the guard every terminal write uses) and `resolved()` (the
+  rows whose payload may be redacted — deliberately excluding `failed`, which is terminal but
+  still needs a human)
 - `Persistence/EloquentInvoiceRepository.php` — includes `compareAndSwapStatus()`, a conditional
   UPDATE checked by affected-row count; see [ADR 0002](adr/0002-compare-and-swap-over-locking.md)
 - `Persistence/OutboxRepository.php` — `enqueue()`, `claim()`, `release()`, `markProcessed()`,
@@ -93,6 +95,10 @@ Four layers, with dependencies pointing inwards only:
   a duplicate delivery cannot notify twice. Carries only the row id, never a serialised model.
 - `Console/ReconcileInvoiceSendingCommand.php` — `invoices:reconcile`, with `--minutes` and
   `--strict`; see [ADR 0007](adr/0007-reconcile-from-the-outbox-row.md)
+- `Console/RetryOutboxMessageCommand.php`, `AbandonOutboxMessageCommand.php`,
+  `PruneOutboxPayloadsCommand.php` — what happens to a row after the queue gives up on it:
+  re-drive it, close it with a recorded reason, or redact its payload once it is history. See
+  [ADR 0008](adr/0008-an-outbox-row-needs-somewhere-to-end-up.md).
 - `Providers/InvoiceServiceProvider.php` — bindings, the notifier switch, the event listener.
   Deliberately not deferrable.
 
@@ -115,6 +121,9 @@ Four layers, with dependencies pointing inwards only:
 
 - `database/migrations/*_create_invoices_table.php` — came with the task
 - `database/migrations/*_create_invoice_product_lines_table.php` — came with the task
+- `database/migrations/2026_10_07_200000_add_resolution_and_redaction_to_invoice_notification_outbox.php`
+  — `resolution` (why a human closed a message) and `redacted_at`. A second migration rather than
+  an edit to the first, which has already been applied.
 - `database/migrations/2026_10_07_120000_create_invoice_notification_outbox_table.php` — the
   outbox. Two indexes: `['status', 'updated_at']` for the stalled query, `['status',
   'created_at']` for the failure report.

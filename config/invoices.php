@@ -30,4 +30,18 @@ return [
     |
     */
     'reconcile_after_minutes' => (int) env('INVOICE_RECONCILE_AFTER_MINUTES', 15),
+
+    /*
+    |---------------------------------------------------------------------------
+    | Payload retention (days)
+    |---------------------------------------------------------------------------
+    |
+    | How long a resolved outbox message keeps its payload before
+    | `invoices:outbox:prune` empties it. The payload carries the customer's name
+    | and e-mail, so this is a personal-data retention window rather than a disk
+    | one; the row itself, and with it the record that the notification happened,
+    | is kept.
+    |
+    */
+    'retain_payload_days' => (int) env('INVOICE_RETAIN_PAYLOAD_DAYS', 30),
 ];

@@ -14,7 +14,9 @@ use Illuminate\Database\Eloquent\Model;
  * @property array{to_email: string, subject: string, message: string} $payload
  * @property int $attempts
  * @property string|null $last_error
+ * @property string|null $resolution
  * @property CarbonInterface|null $processed_at
+ * @property CarbonInterface|null $redacted_at
  * @property CarbonInterface $created_at
  */
 final class OutboxMessageModel extends Model
@@ -36,5 +38,6 @@ final class OutboxMessageModel extends Model
         'payload' => 'array',
         'attempts' => 'int',
         'processed_at' => 'datetime',
+        'redacted_at' => 'datetime',
     ];
 }

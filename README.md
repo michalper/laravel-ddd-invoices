@@ -295,6 +295,35 @@ did it" is not a failure.
 Re-dispatching is safe to overlap: claiming an outbox row is a conditional UPDATE,
 so a duplicate job cannot produce a duplicate notification.
 
+## When a notification fails for good
+
+A message that exhausts its retries leaves its invoice in `sending`, and
+`invoices:reconcile` reports it as critical on every run. Three commands act on that
+([ADR 0008](docs/adr/0008-an-outbox-row-needs-somewhere-to-end-up.md)):
+
+```bash
+php artisan invoices:outbox:retry <id>          # provider is back: re-drive it
+php artisan invoices:outbox:retry --all         # ...or everything, after an outage
+php artisan invoices:outbox:abandon <id> --reason='customer account closed'
+php artisan invoices:outbox:prune               # redact payloads past the window
+```
+
+`abandon` is what stops a resolved problem alerting for ever. It records why, and
+keeps the row — deleting it would buy quiet by destroying the evidence that anything
+happened. A `--reason` is required for the same reason.
+
+`prune` empties the payload of resolved messages older than
+`INVOICE_RETAIN_PAYLOAD_DAYS` (30 by default), because the payload carries the
+customer's name and e-mail and would otherwise outlive every retention policy written
+for invoices. It redacts rather than deletes: that an invoice was notified, when, and
+after how many attempts stays useful long after the message body does. Messages still
+in `failed` are never touched — they are unresolved, and the provider's error is what
+somebody needs to diagnose them.
+
+Both bulk commands do one bounded pass and say so when they stop at their limit. They
+are meant for a scheduler; nothing here schedules them, because that is a deployment
+decision.
+
 ## Known limitation
 
 The delivery webhook (`GET /api/notification/hook/delivered/{reference}`) is

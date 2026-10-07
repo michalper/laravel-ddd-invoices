@@ -39,9 +39,9 @@ Specifics that matter:
 
 - Nothing is lost without a human having to notice, and the recovery path is a single idempotent
   command suitable for cron.
-- There is no acknowledgement or pruning step, so `invoice_notification_outbox` grows
-  monotonically and the failed set is never cleared. The reporting bound mitigates the noise, not
-  the growth; a retention policy is outstanding work.
+- There was no acknowledgement or pruning step, so `invoice_notification_outbox` grew
+  monotonically and the failed set was never cleared. The reporting bound mitigated the noise,
+  not the growth. Closed by [ADR 0008](0008-an-outbox-row-needs-somewhere-to-end-up.md).
 - `--strict` is sharp enough to be racy if used naively. The end-to-end job polls it rather than
   calling it once, because the suite finishes within a second or two of dispatching its last job
   and a single immediate check races the worker's own startup.
