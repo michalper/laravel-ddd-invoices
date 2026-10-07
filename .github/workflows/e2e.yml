@@ -74,8 +74,8 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:8000
         run: vendor/bin/phpunit --testsuite=E2E --testdox
 
-      # Proves the worker actually drained the outbox rather than leaving durable
-      # intents behind.
+      # Proves the outbox actually reaches a fully settled state rather than leaving
+      # durable intents behind.
       #
       # Both flags are load-bearing. Without --minutes=0 the command uses the
       # configured 15-minute threshold, and every row in a run this short is seconds
@@ -83,8 +83,26 @@ jobs:
       # --strict the command exits 0 by design, so the step could only be gated by
       # grepping its prose — which is what this used to do, with an unanchored
       # pattern that "10 stalled notification(s)" also matched.
-      - name: Assert the worker settled every notification
-        run: php artisan invoices:reconcile --minutes=0 --strict
+      #
+      # The retry is not papering over flakiness, it is the assertion. The suite
+      # finishes within a second or two of dispatching its last job, so a single
+      # immediate check races the worker's own startup and poll interval and says
+      # nothing. Polling until the outbox is settled, with a bound, is what makes
+      # this mean "the durable intents do get drained". A worker that is dead rather
+      # than merely slow still fails: --minutes=0 re-dispatches the stalled rows on
+      # every attempt, and with nothing consuming them they stay unsettled until the
+      # bound runs out.
+      - name: Assert the outbox settles every notification
+        run: |
+          for _ in $(seq 1 30); do
+            if php artisan invoices:reconcile --minutes=0 --strict; then
+              echo "Outbox fully settled."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "The outbox did not settle within 60s; the worker is not draining it." >&2
+          exit 1
 
       - name: Show application logs on failure
         if: failure()
