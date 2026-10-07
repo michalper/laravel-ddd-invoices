@@ -118,31 +118,80 @@ final readonly class OutboxRepository
     }
 
     /**
-     * Messages the queue should have drained by now. The outbox row is the source of
-     * truth and the queue dispatch is only a latency optimisation, so anything still
-     * unsettled past the threshold gets re-driven.
-     *
-     * `processing` is included on purpose: a worker killed mid-delivery leaves its
-     * claim behind, and a row nobody will ever release is exactly the kind of stall
-     * this command exists to clear. Re-dispatching it is safe because claim() is
-     * conditional — if the original worker is somehow still alive and settles the
-     * row, the re-dispatched job simply fails to claim it and returns.
+     * Pending messages the queue should have drained by now. The outbox row is the
+     * source of truth and the queue dispatch is only a latency optimisation, so
+     * anything still pending past the threshold gets re-driven.
      *
      * The filter is `updated_at` rather than `created_at` so it means "nothing has
      * happened to this row in N minutes", which is the actual question. Every write
      * here goes through Eloquent, so the timestamp is maintained for free.
      *
-     * @return list<OutboxMessageModel>
+     * Only ids, and only a bounded batch. The caller needs nothing but the id to
+     * dispatch, and the unbounded version failed in exactly the scenario it existed
+     * for: with the worker down and the API still accepting sends, every reconcile
+     * run hydrated the whole backlog into memory and re-enqueued all of it — queue
+     * depth became runs x backlog, and the biggest outage produced the biggest run.
+     *
+     * Deliberately NOT `processing`: a stale claim is recovered by releasing it
+     * (see staleClaims()/releaseClaims()), because claim() only admits `pending` —
+     * re-dispatching a `processing` row produces a job that fails to claim, logs at
+     * info, and changes nothing, which is how stuck claims went unrecoverable once.
+     *
+     * @return list<string>
      */
-    public function stalled(CarbonInterface $olderThan): array
+    public function stalled(CarbonInterface $olderThan, int $limit): array
     {
-        /** @var list<OutboxMessageModel> */
+        /** @var list<string> */
         return OutboxMessageModel::query()
-            ->whereIn('status', OutboxStatus::unsettled())
+            ->where('status', OutboxStatus::Pending->value)
             ->where('updated_at', '<=', $olderThan)
             ->orderBy('updated_at')
-            ->get()
+            ->limit($limit)
+            ->pluck('id')
             ->all();
+    }
+
+    /**
+     * Claims whose worker is gone: `processing` rows nothing has touched past the
+     * threshold. A worker killed between claiming and settling leaves exactly this
+     * behind, and nothing else will ever move it — release() runs only in the
+     * failure path of a living job.
+     *
+     * @return list<string>
+     */
+    public function staleClaims(CarbonInterface $olderThan, int $limit): array
+    {
+        /** @var list<string> */
+        return OutboxMessageModel::query()
+            ->where('status', OutboxStatus::Processing->value)
+            ->where('updated_at', '<=', $olderThan)
+            ->orderBy('updated_at')
+            ->limit($limit)
+            ->pluck('id')
+            ->all();
+    }
+
+    /**
+     * Hands abandoned claims back in bulk, guarded on `processing` so a row the
+     * original worker settled in the meantime is left alone.
+     *
+     * The caller must collect the ids BEFORE calling this and dispatch those ids
+     * afterwards: this update bumps `updated_at`, so the released rows no longer
+     * match the staleness threshold — re-selecting after the release would find
+     * nothing and quietly postpone the recovery by a whole threshold period.
+     *
+     * @param  list<string>  $ids
+     */
+    public function releaseClaims(array $ids): int
+    {
+        if ($ids === []) {
+            return 0;
+        }
+
+        return OutboxMessageModel::query()
+            ->whereIn('id', $ids)
+            ->where('status', OutboxStatus::Processing->value)
+            ->update(['status' => OutboxStatus::Pending->value]);
     }
 
     /**

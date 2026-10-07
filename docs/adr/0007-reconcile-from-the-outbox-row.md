@@ -18,10 +18,20 @@ The row is the source of truth; the queue dispatch is only a latency optimisatio
 
 Specifics that matter:
 
-- `OutboxRepository::stalled()` selects both `pending` *and* `processing` rows, because an
-  abandoned claim is exactly the stall this command exists to clear.
-- It filters on `updated_at`, not `created_at`, so the question is "has anything happened to this
-  row lately" rather than "is this row old".
+- Stale `processing` rows — claims abandoned by a dead worker — are RELEASED back to `pending`
+  first, and only then re-dispatched. This is load-bearing, not bookkeeping: `claim()` only
+  admits `pending`, so re-dispatching a `processing` row produces a job that fails to claim and
+  returns, which is precisely how stuck claims were once unrecoverable while the test covering
+  the path passed vacuously under `Queue::fake()`. The ids are collected before the release,
+  because releasing bumps `updated_at` and takes the rows back out of the staleness window.
+- `stalled()` filters on `updated_at`, not `created_at`, so the question is "has anything
+  happened to this row lately" rather than "is this row old".
+- One bounded pass per run (`--limit`, default 500), announced when it truncates. Unbounded, the
+  worst case grew with the outage that caused it: every run hydrated the whole backlog and
+  re-enqueued all of it, so queue depth became runs x backlog.
+- A dispatch failure is caught and logged rather than aborting the run: the queue being down is
+  the most likely reason a backlog exists, and it must not silence the failed/orphan reports at
+  exactly the moment they matter.
 - Re-dispatching is safe to overlap, because claiming is a conditional UPDATE: a duplicate job
   simply fails to claim and returns. Without that, every reconcile run would multiply
   deliveries.

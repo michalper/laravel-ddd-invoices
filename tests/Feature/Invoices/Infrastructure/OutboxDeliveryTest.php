@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Invoices\Infrastructure;
 
+use Illuminate\Contracts\Bus\Dispatcher as BusDispatcher;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\PendingCommand;
@@ -116,13 +117,19 @@ final class OutboxDeliveryTest extends TestCase
 
     /**
      * A worker killed between claiming a row and settling it leaves the claim
-     * behind. Nothing will ever release it, so the reconciler has to treat a stale
-     * `processing` row as stalled too — otherwise the one failure mode the outbox
-     * exists to survive would strand the message permanently.
+     * behind, and claim() only admits `pending` — so recovery has to RELEASE the
+     * stale claim before re-dispatching, or the new job fails to claim, logs at
+     * info, and the invoice hangs in `sending` for ever with no alert.
+     *
+     * Deliberately no Queue::fake(): an earlier version of this test used it and
+     * passed while the recovery was genuinely broken, because the re-dispatched job
+     * never ran. The queue here is sync, so dispatch executes the job inline and
+     * the assertions are about the outcome a customer sees — the provider called
+     * exactly once and the row settled — not about a message being enqueued.
      */
     public function test_reconcile_recovers_a_message_abandoned_mid_delivery(): void
     {
-        Queue::fake();
+        $driver = $this->fakeNotificationDriver();
 
         $invoice = $this->persistedInvoiceInStatus(StatusEnum::Sending);
         $messageId = $this->enqueue($invoice->id()->toString());
@@ -131,6 +138,54 @@ final class OutboxDeliveryTest extends TestCase
         $this->age($messageId);
 
         $this->reconcile()->assertSuccessful();
+
+        self::assertSame(1, $driver->count());
+
+        $message = $this->outbox()->find($messageId);
+        self::assertNotNull($message);
+        self::assertSame(OutboxStatus::Processed->value, $message->status);
+    }
+
+    /**
+     * The queue being down is the most likely reason a backlog exists at all, so a
+     * dispatch failure must not take the failed/orphan reporting down with it —
+     * that would silence the critical alerts at exactly the moment they matter.
+     */
+    public function test_reconcile_keeps_reporting_when_the_queue_is_down(): void
+    {
+        $invoice = $this->persistedInvoiceInStatus(StatusEnum::Sending);
+        $stalledId = $this->enqueue($invoice->id()->toString());
+        $this->age($stalledId);
+
+        $failed = $this->persistedInvoiceInStatus(StatusEnum::Sending);
+        $this->outbox()->markFailed($this->enqueue($failed->id()->toString()), 'provider gone');
+
+        $bus = $this->createStub(BusDispatcher::class);
+        $bus->method('dispatch')->willThrowException(new RuntimeException('queue connection refused'));
+        $this->app->instance(BusDispatcher::class, $bus);
+
+        $logger = $this->recordingLogger();
+
+        $this->reconcile()->assertSuccessful();
+
+        self::assertCount(1, $logger->withMessage('Re-dispatching stalled notifications failed partway; reporting continues.'));
+        self::assertCount(1, $logger->withMessage('Invoice notification needs attention.'));
+    }
+
+    /** The per-run bound must announce itself, or a truncated run looks finished. */
+    public function test_reconcile_reports_when_it_hits_its_per_run_limit(): void
+    {
+        Queue::fake();
+
+        $invoice = $this->persistedInvoiceInStatus(StatusEnum::Sending);
+        $first = $this->enqueue($invoice->id()->toString());
+        $second = $this->enqueue($invoice->id()->toString());
+        $this->age($first);
+        $this->age($second);
+
+        $this->reconcile(['--limit' => '1'])
+            ->expectsOutputToContain('Hit the per-run limit')
+            ->assertSuccessful();
 
         Queue::assertPushed(ProcessOutboxMessageJob::class, 1);
     }

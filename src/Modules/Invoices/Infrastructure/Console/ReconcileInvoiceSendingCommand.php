@@ -27,9 +27,18 @@ final class ReconcileInvoiceSendingCommand extends Command
      */
     public const int FAILED_REPORT_LIMIT = 50;
 
+    /**
+     * How many stalled messages one run re-drives. Unbounded, this command's worst
+     * case grew with the outage that caused it: every run hydrated the whole backlog
+     * and re-enqueued all of it, so queue depth became runs x backlog. A bounded run
+     * that says what it left behind catches up over a few passes instead.
+     */
+    public const int SWEEP_LIMIT = 500;
+
     #[\Override]
     protected $signature = 'invoices:reconcile
         {--minutes= : How long a message may sit before it is re-driven; defaults to invoices.reconcile_after_minutes}
+        {--limit= : Maximum stalled messages to re-drive in this run}
         {--strict : Exit non-zero if anything was stalled, failed or orphaned — for use as a CI gate}';
 
     #[\Override]
@@ -45,18 +54,52 @@ final class ReconcileInvoiceSendingCommand extends Command
             : $config->integer('invoices.reconcile_after_minutes');
 
         $threshold = now()->subMinutes($minutes);
+        $limit = is_numeric($cap = $this->option('limit')) ? (int) $cap : self::SWEEP_LIMIT;
 
-        $stalled = $outbox->stalled($threshold);
+        // Stale claims first: a worker killed mid-delivery leaves `processing`
+        // behind, and claim() only admits `pending`, so without this release the
+        // re-dispatched job would fail to claim, log at info, and change nothing —
+        // the invoice would hang in `sending` with no alert, for ever. The ids are
+        // collected BEFORE the release because releasing bumps updated_at, which
+        // takes the rows back out of the staleness window.
+        $abandoned = $outbox->staleClaims($threshold, $limit);
+        $outbox->releaseClaims($abandoned);
 
-        foreach ($stalled as $message) {
-            ProcessOutboxMessageJob::dispatch($message->id);
+        if ($abandoned !== []) {
+            $logger->warning('Released outbox claims abandoned by a dead worker.', [
+                'count' => count($abandoned),
+            ]);
+        }
+
+        $stalled = array_values(array_unique([...$abandoned, ...$outbox->stalled($threshold, $limit)]));
+        $dispatched = 0;
+
+        try {
+            foreach ($stalled as $messageId) {
+                ProcessOutboxMessageJob::dispatch($messageId);
+                $dispatched++;
+            }
+        } catch (\Throwable $e) {
+            // Almost certainly the queue itself is down — which is also the most
+            // likely reason there is a backlog at all. Swallowing the rest of the
+            // run here would silence the failed/orphan reports at exactly the moment
+            // they matter, so the error is recorded and reporting continues.
+            $logger->error('Re-dispatching stalled notifications failed partway; reporting continues.', [
+                'dispatched' => $dispatched,
+                'planned' => count($stalled),
+                'reason' => $e->getMessage(),
+            ]);
         }
 
         $this->components->info(sprintf(
             '%d stalled notification(s) re-dispatched (unsettled for over %d minute(s)).',
-            count($stalled),
+            $dispatched,
             $minutes,
         ));
+
+        if ($limit > 0 && (count($abandoned) === $limit || count($stalled) >= $limit)) {
+            $this->components->warn('Hit the per-run limit; run again to continue the backlog.');
+        }
 
         $failedCount = $outbox->countFailed();
 
