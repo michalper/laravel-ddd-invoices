@@ -26,7 +26,7 @@ use Tests\Support\Invoices\SpyNotifier;
 
 final class SendInvoiceServiceTest extends TestCase
 {
-    public function test_send_notifies_the_customer_and_then_swaps_the_status(): void
+    public function test_send_claims_the_invoice_before_notifying_the_customer(): void
     {
         $log = new CallLog;
         $invoice = $this->draft();
@@ -43,10 +43,12 @@ final class SendInvoiceServiceTest extends TestCase
 
         $result = $this->service($repository, $notifier)->send($invoice->id());
 
-        // The specification asks for the status change to follow the notification.
-        // Both writes commit together, so this order is free — and asserting it keeps
-        // the code honest against the requirement.
-        self::assertSame(['notify', 'swap'], $log->all());
+        // This order is the guarantee, not a preference. The conditional UPDATE is
+        // the only thing that can decide a race, so it has to run before anything
+        // irreversible: the `direct` adapter reaches the provider immediately, and a
+        // rollback cannot recall an e-mail. Asserting the order pins the one
+        // property that keeps "exactly one notification" true for both adapters.
+        self::assertSame(['swap', 'notify'], $log->all());
         self::assertSame(StatusEnum::Sending, $result->status());
         self::assertSame(1, $notifier->count());
     }
@@ -130,8 +132,8 @@ final class SendInvoiceServiceTest extends TestCase
     /**
      * Two concurrent requests both read a draft and both clear the in-memory guard;
      * the conditional UPDATE is what decides. The loser must surface as a conflict,
-     * and because it throws out of the transaction its recorded intent rolls back
-     * too — so the customer is notified exactly once.
+     * and it must not have notified anybody — that is the whole reason the claim
+     * comes before the provider call.
      */
     public function test_send_reports_a_conflict_when_another_request_won_the_race(): void
     {
@@ -140,23 +142,28 @@ final class SendInvoiceServiceTest extends TestCase
         $repository = $this->repositoryStub($invoice);
         $repository->method('compareAndSwapStatus')->willReturn(false);
 
+        $notifier = new SpyNotifier;
+
         $this->expectException(InvalidStatusTransitionException::class);
         $this->expectExceptionMessageMatches('/modified by another request/');
 
-        $this->service($repository, new SpyNotifier)->send($invoice->id());
+        try {
+            $this->service($repository, $notifier)->send($invoice->id());
+        } finally {
+            self::assertSame(0, $notifier->count());
+        }
     }
 
     public function test_send_propagates_a_notification_failure_so_the_transaction_rolls_back(): void
     {
         $invoice = $this->draft();
 
-        $repository = $this->repositoryReturning($invoice);
+        $repository = $this->repositoryStub($invoice);
+        $repository->method('compareAndSwapStatus')->willReturn(true);
 
-        // The status swap is never reached, so nothing is left to compensate: the
-        // rollback is the recovery, which is why the state machine needs no
-        // "un-send" transition.
-        $repository->expects($this->never())->method('compareAndSwapStatus');
-
+        // The claim has already landed in this transaction, so nothing is left to
+        // compensate by hand: the rollback takes the status back to draft with it,
+        // which is why the state machine needs no "un-send" transition.
         $this->expectException(InvoiceSendFailedException::class);
 
         $this->service($repository, new SpyNotifier(shouldFail: true))->send($invoice->id());
