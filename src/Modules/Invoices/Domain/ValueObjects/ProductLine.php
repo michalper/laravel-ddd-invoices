@@ -38,6 +38,15 @@ final readonly class ProductLine
         if ($unitPrice < 1) {
             throw InvalidProductLineException::invalidUnitPrice($unitPrice);
         }
+
+        // Both factors are now at least 1, so this division is safe and the check is
+        // exact: it rejects precisely the pairs whose product would not fit in an
+        // int. The domain cannot lean on the form request's `max:2147483647` here —
+        // the whole point of the aggregate is that it does not trust HTTP, and the
+        // mapper restores lines straight from the database.
+        if ($quantity > intdiv(PHP_INT_MAX, $unitPrice)) {
+            throw InvalidProductLineException::lineTotalOutOfRange($quantity, $unitPrice);
+        }
     }
 
     public static function create(string $name, int $quantity, int $unitPrice): self

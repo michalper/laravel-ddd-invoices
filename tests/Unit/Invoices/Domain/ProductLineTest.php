@@ -28,6 +28,37 @@ final class ProductLineTest extends TestCase
         yield 'smallest possible line' => [1, 1, 1];
     }
 
+    /**
+     * totalUnitPrice() is declared `: int`, and PHP turns an overflowing
+     * multiplication into a float — which from an int-typed method is a TypeError,
+     * so an oversized line would answer 500 instead of 422. Rejecting the pair in
+     * the constructor means the unrepresentable line cannot exist in the first
+     * place. The boundary is asserted from both sides so the comparison cannot
+     * drift by one.
+     */
+    #[DataProvider('unrepresentableTotals')]
+    public function test_a_line_whose_total_cannot_be_represented_is_rejected(int $quantity, int $unitPrice): void
+    {
+        $this->expectException(InvalidProductLineException::class);
+
+        ProductLine::create(name: 'Widget', quantity: $quantity, unitPrice: $unitPrice);
+    }
+
+    /** @return iterable<string, array{int, int}> */
+    public static function unrepresentableTotals(): iterable
+    {
+        yield 'just over the limit' => [intdiv(PHP_INT_MAX, 2) + 1, 2];
+        yield 'both factors large' => [PHP_INT_MAX, PHP_INT_MAX];
+        yield 'maximum quantity against a price of two' => [PHP_INT_MAX, 2];
+    }
+
+    public function test_the_largest_representable_line_is_accepted(): void
+    {
+        $line = ProductLine::create(name: 'Widget', quantity: intdiv(PHP_INT_MAX, 2), unitPrice: 2);
+
+        self::assertSame(intdiv(PHP_INT_MAX, 2) * 2, $line->totalUnitPrice());
+    }
+
     #[DataProvider('nonPositiveValues')]
     public function test_non_positive_quantity_is_rejected(int $quantity): void
     {
