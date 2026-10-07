@@ -92,15 +92,33 @@ Everything above is the task brief as delivered. This section documents the
 implementation and is the "docs in README" that `phpunit.xml` and the CI workflows
 point at.
 
+## Deviations from the brief
+
+Two, both deliberate, both with the reasoning recorded — listed here so neither reads as an
+oversight.
+
+**The status is claimed before the notification is recorded.** The brief says to change the
+status to `sending` *after* sending the notification. Inside one transaction nothing is
+observable until the commit, so the customer-visible contract is unchanged — but the statement
+order matters for correctness: the conditional UPDATE that decides a race has to run before the
+only step a rollback cannot undo. Under the default outbox adapter the real `NotificationFacade`
+call happens later still, from the queue worker, after the commit. The full argument is
+[ADR 0003](docs/adr/0003-transactional-outbox-for-the-send-intent.md) and
+[ADR 0004](docs/adr/0004-claim-before-notifying.md).
+
+**The delivery event is `WebhookDeliveredEvent`, not `ResourceDeliveredEvent`.** The brief names
+the latter; the Notifications module that ships with the task dispatches the former. The scaffold
+is used exactly as delivered, so the listener subscribes to the event that actually exists.
+
 Two companion documents carry the detail that does not belong in a brief:
 
 * **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the directory and class map, layer by layer,
   for anyone working on the code.
-* **[docs/adr/](docs/adr/)** — the decision records. Seven decisions shape this module, and each
+* **[docs/adr/](docs/adr/)** — the decision records. Eight decisions shape this module, and each
   one has the context, the alternatives that were rejected, and the costs it imposes:
   keeping the aggregate framework-free, compare-and-swap instead of locking, the transactional
   outbox, claiming before notifying, one renderable for the exception mapping, a
-  non-deferrable provider, and reconciling from the outbox row.
+  non-deferrable provider, reconciling from the outbox row, and an exit for failed outbox rows.
 
 ## The API
 

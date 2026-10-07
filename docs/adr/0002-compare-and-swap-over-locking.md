@@ -37,8 +37,10 @@ column would.
 - The precondition is stated twice, in the aggregate and in the UPDATE. That is intentional
   duplication, not redundancy: the first gives a clear error for the ordinary case, the second is
   what actually holds under concurrency.
-- The guarantee depends on MySQL reporting *changed* rather than *matched* rows, which is the
-  default but is configurable (`PDO::MYSQL_ATTR_FOUND_ROWS`). Turning that on elsewhere in the
-  application would quietly weaken this.
+- An earlier version of this record warned that MySQL's matched-vs-changed row counting
+  (`PDO::MYSQL_ATTR_FOUND_ROWS`) could weaken the guarantee. The audit showed that warning was
+  wrong: this compare-and-swap always has `from != to`, so every row the WHERE matches is also a
+  row the SET changes, and the two counts cannot differ here. The flag is irrelevant to this
+  design, and the characterisation test written to guard it was deleted — it could not fail.
 - CI only ran SQLite for most of this module's life, so the cross-driver claim above was reasoned
   rather than tested. See the database matrix in `.github/workflows/ci.yml`.

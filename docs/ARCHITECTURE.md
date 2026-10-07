@@ -18,13 +18,17 @@ Four layers, with dependencies pointing inwards only:
 - `Application/` — use-case services, the outbound ports, the commands they take, and the
   delivery listener. Depends on Domain only.
 - `Infrastructure/` — Eloquent models and the mapper, the repository implementation, the two
-  notifier adapters, the outbox, the queue job, the console command, the service provider.
+  notifier adapters, the outbox, the queue job, the four console commands, the service provider.
 - `Presentation/` — controllers, the form request, the presenter, the exception mapper, routes.
 
 ## Configuration
 
-- `config/invoices.php` — `notifier` (`outbox` | `direct`) and `reconcile_after_minutes`
-- `.env.example` — `INVOICE_NOTIFIER`, `INVOICE_RECONCILE_AFTER_MINUTES`
+- `config/invoices.php` — `notifier` (`outbox` | `direct`, unknown values rejected at resolve
+  time), `reconcile_after_minutes`, `retain_payload_days`
+- `.env.example` — `INVOICE_NOTIFIER`, `INVOICE_RECONCILE_AFTER_MINUTES`,
+  `INVOICE_RETAIN_PAYLOAD_DAYS`
+- `routes/console.php` — the schedule: reconcile every five minutes, prune daily, both
+  `withoutOverlapping()->onOneServer()`
 - `bootstrap/providers.php` — registers `InvoiceServiceProvider`
 - `bootstrap/app.php` — `withExceptions()` calls `InvoiceExceptionMapper::register()`
 - `routes/api.php` — requires `src/Modules/Invoices/Presentation/routes.php` first, then the
@@ -82,7 +86,8 @@ Four layers, with dependencies pointing inwards only:
 - `Persistence/EloquentInvoiceRepository.php` — includes `compareAndSwapStatus()`, a conditional
   UPDATE checked by affected-row count; see [ADR 0002](adr/0002-compare-and-swap-over-locking.md)
 - `Persistence/OutboxRepository.php` — `enqueue()`, `claim()`, `release()`, `markProcessed()`,
-  `markFailed()`, `recordAttempt()`, `stalled()`, `failed()`, `countFailed()`,
+  `markFailed()`, `recordAttempt()`, `stalled()`, `staleClaims()`, `releaseClaims()`,
+  `failed()`, `countFailed()`, `reopen()`, `abandon()`, `redactable()`, `redact()`,
   `invoicesSendingWithoutOutbox()`
 - `Persistence/DatabaseTransactionManager.php` — the port's one production implementation
 - `Notifications/OutboxInvoiceNotifier.php` — the default adapter: writes the outbox row in the
@@ -95,6 +100,14 @@ Four layers, with dependencies pointing inwards only:
   a duplicate delivery cannot notify twice. Carries only the row id, never a serialised model.
 - `Console/ReconcileInvoiceSendingCommand.php` — `invoices:reconcile`, with `--minutes` and
   `--strict`; see [ADR 0007](adr/0007-reconcile-from-the-outbox-row.md)
+- A deliberate non-decision, recorded because it was asked: none of the sweeping commands use
+  generators (`yield`, `lazy()`, `cursor()`). Each does one bounded pass and announces when it
+  truncates, which fixes both halves of the unbounded problem — memory AND re-enqueueing the
+  whole backlog every run — where lazy iteration fixes only the first. `lazy()`/`chunk()` also
+  page by OFFSET over `updated_at`, the very column the dispatched jobs mutate mid-run, and
+  `cursor()` still buffers the full result client-side on pdo_mysql and pdo_pgsql. In the
+  domain, `ProductLineCollection` holds at most 100 lines and a generator would break
+  `count()`, `isEmpty()` and the constructor's overflow check.
 - `Console/RetryOutboxMessageCommand.php`, `AbandonOutboxMessageCommand.php`,
   `PruneOutboxPayloadsCommand.php` — what happens to a row after the queue gives up on it:
   re-drive it, close it with a recorded reason, or redact its payload once it is history. See
@@ -121,11 +134,15 @@ Four layers, with dependencies pointing inwards only:
 
 - `database/migrations/*_create_invoices_table.php` — came with the task
 - `database/migrations/*_create_invoice_product_lines_table.php` — came with the task
+- `database/migrations/2026_10_07_120000_create_invoice_notification_outbox_table.php` — the
+  outbox.
 - `database/migrations/2026_10_07_200000_add_resolution_and_redaction_to_invoice_notification_outbox.php`
   — `resolution` (why a human closed a message) and `redacted_at`. A second migration rather than
   an edit to the first, which has already been applied.
-- `database/migrations/2026_10_07_120000_create_invoice_notification_outbox_table.php` — the
-  outbox. Two indexes: `['status', 'updated_at']` for the stalled query, `['status',
+- `database/migrations/2026_10_07_210000_index_the_paths_the_queries_actually_take.php` — the
+  indexes the queries need, found by a performance audit. The decisive one is
+  `invoice_product_lines.invoice_id`: PostgreSQL does not index FK columns automatically, so
+  every invoice read scanned the lines table there. Two indexes: `['status', 'updated_at']` for the stalled query, `['status',
   'created_at']` for the failure report.
 
 There is no `version` column on `invoices` and the provided schema is not ours to change, which
@@ -151,7 +168,7 @@ locking.
   `ImmediateTransactionManager`. Fakes rather than doubles where nothing is verified through the
   doubling API.
 
-Two levels exist because a property could not be reached any other way:
+Three jobs exist because a property could not be reached any other way:
 
 - The **database matrix** (`ci.yml`) runs the Feature suite on MySQL and PostgreSQL as well as
   SQLite, because the compare-and-swap's correctness is a claim about every driver. It earned its

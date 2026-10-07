@@ -44,3 +44,8 @@ that cannot be rolled back.
 - One window remains under `direct`, and it is inherent to doing I/O in a transaction rather than
   to this ordering: if the provider call succeeds and the commit then fails, the e-mail went out
   while the status stayed `draft`. This is one more reason `outbox` is the default.
+- A second `direct`-only window, found later: a provider fast enough to call the delivery
+  webhook before the send transaction commits finds the invoice still `draft`. The listener
+  treats that as an anomaly, answers 204, and the provider never retries — the invoice then
+  waits in `sending` for a confirmation that already came. Under the outbox adapter the
+  provider is only reached after the commit, so the window does not exist there.
