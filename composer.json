@@ -11,12 +11,16 @@
     },
     "require-dev": {
         "fakerphp/faker": "^1.24",
+        "guzzlehttp/guzzle": "^8.2",
+        "infection/infection": "^0.35",
+        "larastan/larastan": "^3.9",
         "laravel/pail": "^1.2",
         "laravel/pint": "^1.24",
         "laravel/sail": "^1.44",
         "mockery/mockery": "^1.6",
         "nunomaduro/collision": "^8.8",
-        "phpunit/phpunit": "^11"
+        "phpunit/phpunit": "^13.4",
+        "rector/rector": "^2.0"
     },
     "autoload": {
         "psr-4": {
@@ -63,7 +67,8 @@
         "sort-packages": true,
         "allow-plugins": {
             "pestphp/pest-plugin": true,
-            "php-http/discovery": true
+            "php-http/discovery": true,
+            "infection/extension-installer": true
         }
     },
     "minimum-stability": "stable",

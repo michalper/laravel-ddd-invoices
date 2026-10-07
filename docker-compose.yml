@@ -22,7 +22,30 @@ services:
         networks:
             - sail
         depends_on:
-            - redis
+            redis:
+                condition: service_healthy
+    queue:
+        # The outbox is the default notifier, so a worker has to be running for the
+        # send flow to reach the provider. Bringing it up here means ./start.sh is
+        # enough and no extra command is needed to see the full lifecycle.
+        build:
+            context: './vendor/laravel/sail/runtimes/8.5'
+            dockerfile: Dockerfile
+            args:
+                WWWGROUP: '${WWWGROUP}'
+        image: 'sail-8.5/app'
+        command: ['php', '/var/www/html/artisan', 'queue:work', '--tries=5', '--sleep=1']
+        restart: unless-stopped
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+        depends_on:
+            redis:
+                condition: service_healthy
     redis:
         image: 'redis:alpine'
         ports:
@@ -36,8 +59,10 @@ services:
                 - CMD
                 - redis-cli
                 - ping
-            retries: 3
+            interval: 3s
+            retries: 5
             timeout: 5s
+            start_period: 5s
 networks:
     sail:
         driver: bridge

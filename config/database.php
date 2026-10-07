@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Str;
+use Pdo\Mysql;
 
 return [
 
@@ -37,9 +38,23 @@ return [
             'database' => env('DB_DATABASE', database_path('database.sqlite')),
             'prefix' => '',
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
-            'busy_timeout' => null,
-            'journal_mode' => null,
-            'synchronous' => null,
+
+            // These three default to null in a stock Laravel install, which means
+            // SQLite's own defaults: fail immediately on contention, rollback
+            // journal, writer blocks readers. That is fine for a single process and
+            // wrong here, because docker-compose.yml runs a queue worker alongside
+            // the web container and both write this file over a bind mount. The
+            // outbox job UPDATEs a row within ~1s of the HTTP request committing it,
+            // so the two collide readily — and "database is locked" would burn the
+            // job's retries and strand the invoice in `sending`, which is precisely
+            // the failure the outbox exists to prevent.
+            //
+            // WAL lets the worker read while a request writes; busy_timeout makes a
+            // collision a short wait instead of an error. NORMAL is the synchronous
+            // mode WAL is designed to pair with.
+            'busy_timeout' => env('DB_BUSY_TIMEOUT', 5000),
+            'journal_mode' => env('DB_JOURNAL_MODE', 'WAL'),
+            'synchronous' => env('DB_SYNCHRONOUS', 'NORMAL'),
         ],
 
         'mysql' => [
@@ -58,7 +73,7 @@ return [
             'strict' => true,
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
-                PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
         ],
 
@@ -78,7 +93,7 @@ return [
             'strict' => true,
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
-                PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
         ],
 

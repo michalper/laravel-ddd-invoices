@@ -1,5 +1,9 @@
 <?php
 
+use Modules\Invoices\Infrastructure\Providers\InvoiceServiceProvider;
+use Modules\Notifications\Infrastructure\Providers\NotificationServiceProvider;
+
 return [
-    \Modules\Notifications\Infrastructure\Providers\NotificationServiceProvider::class,
+    InvoiceServiceProvider::class,
+    NotificationServiceProvider::class,
 ];

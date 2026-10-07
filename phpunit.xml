@@ -3,7 +3,11 @@
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
          bootstrap="vendor/autoload.php"
          colors="true"
+         defaultTestSuite="Unit,Feature"
 >
+    <!-- defaultTestSuite is what actually keeps E2E out of a bare `phpunit` run.
+         PHPUnit accepts the comma-separated form, and both suites stay individually
+         selectable on the command line. -->
     <testsuites>
         <testsuite name="Unit">
             <directory>tests/Unit</directory>
@@ -11,14 +15,29 @@
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
         </testsuite>
+        <!-- Genuinely excluded from the default run by defaultTestSuite above,
+             because it needs a booted application at E2E_BASE_URL. Listing it here
+             without that attribute would not exclude it: PHPUnit runs every
+             testsuite when none is selected, so the suite only LOOKED excluded,
+             while E2ETestCase::setUp() was quietly skipping it. That guard is still
+             there as a second line of defence, but it is no longer the mechanism,
+             so weakening it can no longer make the unit and coverage jobs start
+             making network calls. Select this suite by name to run it; see
+             "Running the test suites" in README.md. -->
+        <testsuite name="E2E">
+            <directory>tests/E2E</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>
             <directory>app</directory>
+            <directory>src</directory>
         </include>
     </source>
     <php>
         <env name="APP_ENV" value="testing"/>
+        <env name="DB_CONNECTION" value="sqlite"/>
+        <env name="DB_DATABASE" value=":memory:"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="CACHE_STORE" value="array"/>

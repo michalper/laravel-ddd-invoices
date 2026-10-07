@@ -19,7 +19,7 @@ final class NotificationControllerTest extends TestCase
         $this->setUpFaker();
     }
 
-    public function testDeliveredHookDispatchesEvent(): void
+    public function test_delivered_hook_dispatches_event(): void
     {
         Event::fake([WebhookDeliveredEvent::class]);
 
@@ -33,7 +33,7 @@ final class NotificationControllerTest extends TestCase
         Event::assertDispatched(WebhookDeliveredEvent::class);
     }
 
-    public function testUnknownActionReturnsNotFound(): void
+    public function test_unknown_action_returns_not_found(): void
     {
         $uri = route('notification.hook', [
             'action' => 'unknownaction',
@@ -43,7 +43,7 @@ final class NotificationControllerTest extends TestCase
         $this->getJson($uri)->assertNotFound();
     }
 
-    public function testInvalidReferencePatternReturnsNotFound(): void
+    public function test_invalid_reference_pattern_returns_not_found(): void
     {
         $uri = route('notification.hook', [
             'action' => 'delivered',
