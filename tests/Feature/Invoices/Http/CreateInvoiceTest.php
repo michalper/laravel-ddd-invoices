@@ -129,10 +129,23 @@ final class CreateInvoiceTest extends TestCase
             ['product_lines.0.unit_price'],
         ];
 
-        // `integer` is strict on purpose: the API is explicitly typed, not coercive.
-        yield 'quantity as a string' => [
+        // Strict on purpose: the API is explicitly typed, not coercive. The sharp
+        // case is "2" — a string Laravel's own `integer` rule would coerce and
+        // accept, which once turned into a TypeError and a 500 further down. The
+        // float and non-numeric variants pin the rest of the boundary.
+        yield 'quantity as a coercible string' => [
+            ['customer_name' => 'Ada', 'customer_email' => 'ada@example.com', 'product_lines' => [[...$line, 'quantity' => '2']]],
+            ['product_lines.0.quantity'],
+        ];
+
+        yield 'quantity as a non-numeric string' => [
             ['customer_name' => 'Ada', 'customer_email' => 'ada@example.com', 'product_lines' => [[...$line, 'quantity' => 'two']]],
             ['product_lines.0.quantity'],
+        ];
+
+        yield 'unit price as a coercible string' => [
+            ['customer_name' => 'Ada', 'customer_email' => 'ada@example.com', 'product_lines' => [[...$line, 'unit_price' => '500']]],
+            ['product_lines.0.unit_price'],
         ];
 
         // Bounded so an oversized value is a 422 here rather than an out-of-range

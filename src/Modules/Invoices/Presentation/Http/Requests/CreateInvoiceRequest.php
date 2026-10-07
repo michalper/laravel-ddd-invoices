@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Modules\Invoices\Presentation\Http\Requests;
 
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Modules\Invoices\Application\Commands\CreateInvoiceCommand;
 use Modules\Invoices\Application\Commands\CreateProductLineCommand;
+use Modules\Invoices\Presentation\Http\Requests\Rules\StrictInteger;
 
 final class CreateInvoiceRequest extends FormRequest
 {
@@ -19,7 +21,7 @@ final class CreateInvoiceRequest extends FormRequest
      * must not trust HTTP, and a client deserves a 422 naming the offending field
      * rather than a 500 from a constructor it cannot see.
      *
-     * @return array<string, list<string>>
+     * @return array<string, list<ValidationRule|string>>
      */
     public function rules(): array
     {
@@ -36,13 +38,19 @@ final class CreateInvoiceRequest extends FormRequest
             'product_lines' => ['sometimes', 'array', 'max:'.self::MAX_PRODUCT_LINES],
             'product_lines.*.name' => ['required', 'string', 'max:255'],
 
-            // `integer` is strict, so "2" as a JSON string is rejected: this API is
-            // explicitly typed rather than coercive. The upper bound mirrors the
-            // schema's `integer` columns, so an oversized value is a 422 here
-            // instead of an out-of-range error from MySQL (SQLite would take it
-            // silently).
-            'product_lines.*.quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
-            'product_lines.*.unit_price' => ['required', 'integer', 'min:1', 'max:2147483647'],
+            // StrictInteger, because Laravel's `integer` rule is coercive — it
+            // accepts "2" — and this API is explicitly typed on purpose: the command
+            // layer takes int under strict_types, so a coercible string that slips
+            // through validation surfaces as a TypeError, not as a 2. The upper
+            // bound mirrors the schema's `integer` columns, so an oversized value is
+            // a 422 here instead of an out-of-range error from MySQL (SQLite would
+            // take it silently).
+            // `integer` stays alongside StrictInteger, and not as decoration: min
+            // and max only compare numerically when the field carries a numeric
+            // rule — without it they measure string length, and min:1 would wave 0
+            // through as the one-character string "0".
+            'product_lines.*.quantity' => ['required', 'integer', new StrictInteger, 'min:1', 'max:2147483647'],
+            'product_lines.*.unit_price' => ['required', 'integer', new StrictInteger, 'min:1', 'max:2147483647'],
         ];
     }
 
