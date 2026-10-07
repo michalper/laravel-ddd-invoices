@@ -6,7 +6,6 @@
 [![Smoke](https://github.com/michalper/laravel-ddd-invoices/actions/workflows/smoke.yml/badge.svg?branch=main)](https://github.com/michalper/laravel-ddd-invoices/actions/workflows/smoke.yml)
 
 [![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=michalper_laravel-ddd-invoices&metric=alert_status)](https://sonarcloud.io/project/overview?id=michalper_laravel-ddd-invoices)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=michalper_laravel-ddd-invoices&metric=coverage)](https://sonarcloud.io/component_measures?id=michalper_laravel-ddd-invoices&metric=coverage)
 [![Maintainability](https://sonarcloud.io/api/project_badges/measure?project=michalper_laravel-ddd-invoices&metric=sqale_rating)](https://sonarcloud.io/project/overview?id=michalper_laravel-ddd-invoices)
 [![Security](https://sonarcloud.io/api/project_badges/measure?project=michalper_laravel-ddd-invoices&metric=security_rating)](https://sonarcloud.io/project/overview?id=michalper_laravel-ddd-invoices)
 [![Reliability](https://sonarcloud.io/api/project_badges/measure?project=michalper_laravel-ddd-invoices&metric=reliability_rating)](https://sonarcloud.io/project/overview?id=michalper_laravel-ddd-invoices)
@@ -15,16 +14,16 @@
 ![PHP](https://img.shields.io/badge/PHP-8.5-777BB4?logo=php&logoColor=white)
 ![Laravel](https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white)
 ![PHPStan](https://img.shields.io/badge/PHPStan-level%20max-2a5d8f)
-![Coverage gate](https://img.shields.io/badge/coverage%20gate-95%25-brightgreen)
 ![Mutation gate](https://img.shields.io/badge/MSI%20gate-75%25-brightgreen)
 
 Three kinds of badge, on purpose. The first row is live workflow status. The second
 row is live measurement, served by SonarCloud and Codecov from the latest analysis —
-those numbers move with the code and cannot go stale. The third row states the
-thresholds CI enforces rather than any current reading: the gates live in
-`phpunit.xml`, `phpstan.neon`, `tools/check-coverage.php` and `infection.json5`, and
-a run that falls under one fails. As of the last full audit the module sits at 100%
-line coverage, 100% mutation code coverage and 78% covered-code MSI.
+those numbers move with the code and cannot go stale. Coverage appears exactly once,
+on the Codecov badge, because a current reading and an enforced floor are different
+facts: the floor is 95% over `src/Modules/Invoices` (`tools/check-coverage.php`) and
+a run below it fails. The third row states the remaining enforced thresholds. As of
+the last full audit the module sits at 100% line coverage, 100% mutation code
+coverage and 78% covered-code MSI.
 
 ## Invoice Structure:
 
@@ -312,6 +311,7 @@ that failed permanently:
 php artisan invoices:reconcile                 # threshold from config
 php artisan invoices:reconcile --minutes=0     # treat everything unsettled as stalled
 php artisan invoices:reconcile --strict        # exit non-zero if anything is outstanding
+php artisan invoices:reconcile --limit=100     # cap one run's re-dispatches (default 500)
 ```
 
 `INVOICE_RECONCILE_AFTER_MINUTES` (default 15) sets how long a message may sit
@@ -331,8 +331,10 @@ A message that exhausts its retries leaves its invoice in `sending`, and
 ```bash
 php artisan invoices:outbox:retry <id>          # provider is back: re-drive it
 php artisan invoices:outbox:retry --all         # ...or everything, after an outage
+php artisan invoices:outbox:retry --all --limit=10   # bounded; says when it truncates
 php artisan invoices:outbox:abandon <id> --reason='customer account closed'
 php artisan invoices:outbox:prune               # redact payloads past the window
+php artisan invoices:outbox:prune --days=7 --limit=100   # override window and batch
 ```
 
 `abandon` is what stops a resolved problem alerting for ever. It records why, and
