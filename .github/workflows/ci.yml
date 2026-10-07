@@ -5,10 +5,14 @@ on:
     branches: [main]
   pull_request:
 
+# Pinned to ubuntu-24.04 rather than ubuntu-latest: that label starts moving to
+# Ubuntu 26.04 on 2026-10-19, and shivammathur/setup-php documents 22.04 and
+# 24.04 only, so ubuntu-latest would drift onto an image where PHP 8.5 is not
+# guaranteed to install. Revisit once setup-php lists 26.04.
 jobs:
   tests:
     name: Tests (PHP 8.5)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
@@ -19,7 +23,7 @@ jobs:
           coverage: none
           tools: composer:v2
 
-      - uses: ramsey/composer-install@v3
+      - uses: ramsey/composer-install@v4
 
       # .env.example ships a usable APP_KEY, so no key:generate is needed. No
       # migrate step either: the suite runs against an in-memory SQLite database
@@ -30,7 +34,7 @@ jobs:
 
   coverage:
     name: Coverage floor
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
@@ -41,7 +45,7 @@ jobs:
           coverage: pcov
           tools: composer:v2
 
-      - uses: ramsey/composer-install@v3
+      - uses: ramsey/composer-install@v4
 
       - run: cp .env.example .env
 
@@ -52,7 +56,7 @@ jobs:
 
   static-analysis:
     name: PHPStan (level max)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
@@ -62,13 +66,13 @@ jobs:
           coverage: none
           tools: composer:v2
 
-      - uses: ramsey/composer-install@v3
+      - uses: ramsey/composer-install@v4
 
       - run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
 
   style:
     name: Pint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
@@ -78,13 +82,13 @@ jobs:
           coverage: none
           tools: composer:v2
 
-      - uses: ramsey/composer-install@v3
+      - uses: ramsey/composer-install@v4
 
       - run: vendor/bin/pint --test
 
   rector:
     name: Rector (dry run)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
@@ -94,7 +98,7 @@ jobs:
           coverage: none
           tools: composer:v2
 
-      - uses: ramsey/composer-install@v3
+      - uses: ramsey/composer-install@v4
 
       # Reported, never applied in CI: modernisation drift surfaces on the pull
       # request instead of being rewritten behind the author's back.

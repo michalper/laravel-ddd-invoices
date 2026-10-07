@@ -5,10 +5,12 @@ on:
     branches: [main]
   pull_request:
 
+# Pinned for the same reason as ci.yml: ubuntu-latest starts moving to Ubuntu
+# 26.04 on 2026-10-19 and setup-php does not list it yet.
 jobs:
   e2e:
     name: Lifecycle over HTTP
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     services:
       redis:
@@ -30,7 +32,7 @@ jobs:
           coverage: none
           tools: composer:v2
 
-      - uses: ramsey/composer-install@v3
+      - uses: ramsey/composer-install@v4
 
       - name: Prepare a real environment
         run: |
