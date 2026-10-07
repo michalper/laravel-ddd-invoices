@@ -30,8 +30,12 @@ return new class extends Migration
 
             $table->foreign('invoice_id')->references('id')->on('invoices');
 
-            // Supports both reconciliation queries: stalled pending messages and
-            // permanently failed ones, both ordered by age.
+            // One index per reconciliation query. Stalled messages are selected by
+            // "nothing has happened to this row lately", which is updated_at;
+            // permanently failed ones are reported oldest-problem-first, which is
+            // created_at. Leading with status keeps both selective, since the vast
+            // majority of rows settle as `processed`.
+            $table->index(['status', 'updated_at']);
             $table->index(['status', 'created_at']);
         });
     }

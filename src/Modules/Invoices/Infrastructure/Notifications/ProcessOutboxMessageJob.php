@@ -10,7 +10,6 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Modules\Invoices\Infrastructure\Persistence\Eloquent\OutboxMessageModel;
-use Modules\Invoices\Infrastructure\Persistence\Eloquent\OutboxStatus;
 use Modules\Invoices\Infrastructure\Persistence\OutboxRepository;
 use Modules\Notifications\Api\Data\NotifyData;
 use Modules\Notifications\Api\NotificationFacadeInterface;
@@ -60,9 +59,14 @@ final class ProcessOutboxMessageJob implements ShouldQueue
             return;
         }
 
-        // Idempotent: a duplicate delivery of this job must not notify twice.
-        if ($message->status !== OutboxStatus::Pending->value) {
-            $logger->info('Outbox message already settled; skipping.', [
+        // Idempotent, and atomically so: claiming the row is a conditional UPDATE,
+        // not a status read. Reading the status here and marking the row processed
+        // after the provider call would be a check-then-act with an external call
+        // in the middle — two workers can both see `pending` whenever a notify()
+        // outlives the queue's retry_after, and both would notify. Exactly one
+        // claim can succeed, so exactly one worker reaches the provider.
+        if (! $outbox->claim($this->messageId)) {
+            $logger->info('Outbox message already claimed or settled; skipping.', [
                 'outbox_id' => $this->messageId,
                 'status' => $message->status,
             ]);
@@ -79,6 +83,10 @@ final class ProcessOutboxMessageJob implements ShouldQueue
             ));
         } catch (Throwable $e) {
             $outbox->recordAttempt($this->messageId, $e->getMessage());
+
+            // Hand the claim back, or a failed attempt would strand the row in
+            // `processing` and no retry could ever pick it up again.
+            $outbox->release($this->messageId);
 
             // Rethrow so the queue applies the backoff above; failed() settles the
             // row once the attempts are exhausted.

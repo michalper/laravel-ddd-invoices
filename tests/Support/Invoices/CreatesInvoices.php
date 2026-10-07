@@ -107,6 +107,19 @@ trait CreatesInvoices
         return $logger;
     }
 
+    /**
+     * A recording fake rather than a double, for tests that assert on the log
+     * entries themselves instead of on a call expectation.
+     */
+    protected function recordingLogger(): RecordingLogger
+    {
+        $logger = new RecordingLogger;
+
+        $this->app->instance(LoggerInterface::class, $logger);
+
+        return $logger;
+    }
+
     protected function invoiceRepository(): InvoiceRepositoryInterface
     {
         return $this->app->make(InvoiceRepositoryInterface::class);
