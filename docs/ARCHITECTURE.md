@@ -152,27 +152,26 @@ Two levels exist because a property could not be reached any other way:
   curl, because everything else boots the application with `artisan serve` and never touches the
   path a reviewer follows.
 
-### Known gap: no test produces a real race
+### Concurrency
 
-Every race in the suite is simulated sequentially — call `claim()` twice, or stub
-`compareAndSwapStatus()` to return false. That covers the handling of a lost race but never
-produces one, so ADR 0002's conditional UPDATE and ADR 0004's ordering are the two guarantees
-nothing exercises under genuine contention.
+`tests/Feature/Invoices/Infrastructure/ConcurrentClaimTest.php` is the one place where a race is
+actually raced: two real transactions on two connections, with the second blocked on the row the
+first holds. It departs from the rest of the suite twice, both deliberately — `DatabaseTruncation`
+instead of `RefreshDatabase`, because writes have to commit to be contended for, and
+`DB::setDefaultConnection()` to run the real repository method on each connection rather than
+re-implementing its SQL in the test. It skips on SQLite, which has no concurrent writers at all,
+so it runs in the database matrix.
 
-An HTTP-level attempt was built and then removed, because measuring it showed it had no power:
-with the affected-row check replaced by `return true`, eight parallel sends still reported a
-single acceptance in 6 runs out of 6. Two things defeat it. SQLite has no concurrent writers at
-all, so the second transaction waits, reads `sending`, and is rejected by the aggregate's
-in-memory guard before the UPDATE is reached. And PHP's built-in server — even with
-`PHP_CLI_SERVER_WORKERS` and `--no-reload`, both of which are required and neither of which is
-obvious — is a development server: under parallel load it returned three HTTP 500s that never
-reached PHP at all, logging nothing and completing in 0.03ms.
+Its power was measured rather than assumed: with the affected-row check replaced by `return true`
+it fails 6 runs out of 6, on both MySQL and PostgreSQL.
 
-Doing this properly does not need a web server. Two database connections with an explicit
-barrier would be deterministic: connection A claims the invoice and holds its transaction open,
-connection B attempts the same conditional UPDATE and must block, then observe zero affected rows
-once A commits. It needs a server engine, a per-driver lock timeout, and a test case that commits
-rather than wrapping itself in `RefreshDatabase`'s transaction.
+An earlier HTTP-level attempt was built and removed, because the same measurement showed it had
+none — eight parallel sends still reported a single acceptance in 6 runs out of 6 with the same
+break in place. Two things defeated it. PHP's built-in server is a development server, and under
+parallel load it returned three HTTP 500s that never reached PHP at all, logging nothing and
+completing in 0.03ms. And on SQLite the second transaction simply waits, then reads `sending` and
+is rejected by the aggregate's guard, so the conditional UPDATE is never reached. The lesson is
+kept here because it is the reason this test lives at the database level and not over HTTP.
 
 ## Quality gates
 

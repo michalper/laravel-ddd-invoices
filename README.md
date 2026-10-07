@@ -102,6 +102,105 @@ Two companion documents carry the detail that does not belong in a brief:
   outbox, claiming before notifying, one renderable for the exception mapping, a
   non-deferrable provider, and reconciling from the outbox row.
 
+## The API
+
+Three endpoints, all under `/api`, all JSON in and JSON out. Every response wraps the
+invoice in a `data` key; every error is `{"message": "..."}`, and a validation failure
+adds Laravel's `errors` object.
+
+### Create an invoice — `POST /api/invoices`
+
+`product_lines` is optional: an invoice may be created with none, and only gains the
+obligation to have one when it is sent.
+
+```bash
+curl -X POST http://localhost:8080/api/invoices \
+  -H 'Content-Type: application/json' -H 'Accept: application/json' \
+  -d '{
+        "customer_name": "Ada Lovelace",
+        "customer_email": "ada@example.com",
+        "product_lines": [
+          {"name": "Widget", "quantity": 2, "unit_price": 500}
+        ]
+      }'
+```
+
+Answers `201` with a `Location` header pointing at the new invoice:
+
+```json
+{
+  "data": {
+    "id": "0191b1f0-2222-7222-8222-222222222222",
+    "status": "draft",
+    "customer_name": "Ada Lovelace",
+    "customer_email": "ada@example.com",
+    "product_lines": [
+      {
+        "id": "4a1c...",
+        "name": "Widget",
+        "quantity": 2,
+        "unit_price": 500,
+        "total_unit_price": 1000
+      }
+    ],
+    "total_price": 1000
+  }
+}
+```
+
+Prices and totals are integers in the currency's minor unit; nothing here is a float.
+`quantity` and `unit_price` must be integers of at least 1 — `"2"` as a string is
+rejected, because this API is explicitly typed rather than coercive. Product lines
+come back in a defined order (by name, then id), not in the order they were sent: the
+provided schema records no line position.
+
+### View an invoice — `GET /api/invoices/{invoiceId}`
+
+```bash
+curl http://localhost:8080/api/invoices/0191b1f0-2222-7222-8222-222222222222 \
+  -H 'Accept: application/json'
+```
+
+Answers `200` with the same shape. A malformed identifier is a `404` from the route
+constraint, before any controller runs.
+
+### Send an invoice — `POST /api/invoices/{invoiceId}/send`
+
+```bash
+curl -X POST http://localhost:8080/api/invoices/0191b1f0-2222-7222-8222-222222222222/send \
+  -H 'Accept: application/json'
+```
+
+Answers **`202 Accepted`**, not `200`, and the distinction is deliberate: the request
+is accepted and the intent is durable, but the terminal state arrives later over the
+delivery webhook. `sending` is literally a transitional state.
+
+### Delivery
+
+The provider confirms delivery by calling the Notifications module's webhook, which
+is what moves the invoice to its terminal state. With the shipped `DummyDriver`
+nothing really calls it, so it is driven by hand:
+
+```bash
+curl http://localhost:8080/api/notification/hook/delivered/0191b1f0-2222-7222-8222-222222222222 \
+  -H 'Accept: application/json'
+```
+
+Answers `204`. The invoice is then `sent-to-client`. A duplicate call is absorbed
+rather than refused, because a provider retrying is behaving correctly.
+
+### Status codes
+
+| Code | When |
+| --- | --- |
+| `201` | invoice created |
+| `202` | send accepted; the notification is durably recorded |
+| `204` | delivery webhook accepted |
+| `404` | no such invoice, or a malformed identifier |
+| `409` | the invoice is not in a state that allows this — already sending, already sent, or the loser of two concurrent sends. The payload is fine; the resource's state conflicts |
+| `422` | the payload is invalid, or the invoice has no product lines to send |
+| `502` | the notification provider refused the message. The cause is logged, not returned |
+
 ## Running the test suites
 
 The default run is the `Unit` and `Feature` suites, which need no services and no
@@ -110,6 +209,18 @@ migration step — they build an in-memory SQLite database per test class:
 ```bash
 vendor/bin/phpunit
 ```
+
+`./start.sh` leaves an empty database on purpose — in an API someone is reviewing, fixture data
+makes it harder to tell what the application created from what it was handed. Pass `--demo` for a
+sample invoice:
+
+```bash
+./start.sh --demo                                  # or, in a running container:
+php artisan db:seed --class=DemoInvoiceSeeder
+```
+
+The seeder goes through `CreateInvoiceService`, so the demo data is created by the same path as a
+real request and cannot reach a state the aggregate would refuse.
 
 The `E2E` suite is excluded from that run (`defaultTestSuite` in `phpunit.xml`)
 because it talks to a booted application over real HTTP rather than through the
@@ -143,9 +254,11 @@ CI also runs the Feature suite against MySQL and PostgreSQL, because the compare
 correctness is a claim about every driver, and a smoke job that runs `./start.sh` on a fresh clone
 and walks the lifecycle with curl.
 
-One gap is deliberate and recorded rather than papered over: no test produces a real race. See
-"Known gap" in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for what was tried, why it was
-removed, and what a deterministic version would take.
+Concurrency is tested with two real contending transactions rather than simulated, on MySQL and
+PostgreSQL — SQLite has no concurrent writers, so the test skips there. Its power was measured:
+breaking the compare-and-swap makes it fail 6 runs out of 6. See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for why an earlier HTTP-level attempt was removed
+instead of weakened.
 
 ## Notification delivery: `INVOICE_NOTIFIER`
 

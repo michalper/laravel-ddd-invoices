@@ -32,10 +32,27 @@ if [ ! -d vendor/laravel/sail/runtimes ]; then
         composer install --ignore-platform-reqs --no-scripts --no-interaction
 fi
 
+# Opt-in demo data. An empty database is the honest default for an API someone is
+# reviewing — it keeps what the application created distinct from what was handed to
+# it — so the fixture is a flag rather than a surprise.
+seed_demo=false
+case "${1:-}" in
+    --demo) seed_demo=true ;;
+    '') ;;
+    *) echo "Unknown option: $1 (supported: --demo)" >&2; exit 64 ;;
+esac
+
 docker compose up --build --remove-orphans -d
 docker compose exec -T app composer install
-docker compose exec -T app php artisan migrate:fresh --seed
+docker compose exec -T app php artisan migrate:fresh
+
+if [ "$seed_demo" = true ]; then
+    docker compose exec -T app php artisan db:seed --class=DemoInvoiceSeeder
+fi
 
 echo
 echo "==> Ready: ${APP_URL:-http://localhost:8080}"
+if [ "$seed_demo" != true ]; then
+    echo "    Database is empty. Re-run with ./start.sh --demo for a sample invoice."
+fi
 echo "    Queue worker is running, so the outbox drains on its own."
