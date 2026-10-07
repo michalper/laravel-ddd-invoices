@@ -71,9 +71,12 @@ applied; rewriting applied migrations is how environments drift apart.
 - Abandoning is deliberately a one-way door with no "unabandon": reopening it would need the same
   guard relaxed, and a message somebody consciously closed should be re-sent through a new send,
   not resurrected.
-- `invoices:outbox:prune` needs scheduling to be worth anything. Nothing in this repository
-  schedules it, because where cron lives is a deployment decision rather than an application one —
-  but an unscheduled prune is exactly the dead config this module has already had to remove once.
+- `invoices:outbox:prune` needs scheduling to be worth anything, and it is scheduled: the
+  application defines the cadence in `routes/console.php` (prune daily, reconcile every five
+  minutes), and docker-compose runs `schedule:work` beside the queue worker. What stays a
+  deployment decision is only HOW `schedule:run` is kept alive, not WHETHER the commands run —
+  the earlier framing of this bullet had that boundary wrong, and an unscheduled prune would
+  have been exactly the dead config this module already had to remove once.
 - The retry path can produce a duplicate notification: if the original attempt reached the
   provider but failed to record it, re-driving sends again. The invoice id is still the
   idempotency key the provider receives as `reference`, so this is the same at-least-once

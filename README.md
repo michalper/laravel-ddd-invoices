@@ -320,9 +320,15 @@ after how many attempts stays useful long after the message body does. Messages 
 in `failed` are never touched — they are unresolved, and the provider's error is what
 somebody needs to diagnose them.
 
-Both bulk commands do one bounded pass and say so when they stop at their limit. They
-are meant for a scheduler; nothing here schedules them, because that is a deployment
-decision.
+Both bulk operations do one bounded pass and say so when they stop at their limit.
+
+The autonomous commands are scheduled in the application itself (`routes/console.php`):
+`invoices:reconcile` every five minutes, `invoices:outbox:prune` daily, both
+`withoutOverlapping()->onOneServer()`. Deployment only has to run `schedule:run` from
+cron or keep `schedule:work` alive — docker-compose ships a `scheduler` service doing
+exactly that, next to the queue worker. `retry` and `abandon` are deliberately NOT
+scheduled: they are operator tools, and a cron'd `retry --all` would resurrect every
+permanently failed message for ever, defeating the point of the `failed` status.
 
 ## Known limitation
 

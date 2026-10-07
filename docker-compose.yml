@@ -46,6 +46,28 @@ services:
         depends_on:
             redis:
                 condition: service_healthy
+    scheduler:
+        # The counterpart of the queue worker: the schedule in routes/console.php
+        # is what makes invoices:reconcile and invoices:outbox:prune actually run,
+        # and schedule:work is the long-running form of cron's schedule:run.
+        build:
+            context: './vendor/laravel/sail/runtimes/8.5'
+            dockerfile: Dockerfile
+            args:
+                WWWGROUP: '${WWWGROUP}'
+        image: 'sail-8.5/app'
+        command: ['php', '/var/www/html/artisan', 'schedule:work']
+        restart: unless-stopped
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+        depends_on:
+            redis:
+                condition: service_healthy
     redis:
         image: 'redis:alpine'
         ports:
