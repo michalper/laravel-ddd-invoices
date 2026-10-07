@@ -1,6 +1,16 @@
 includes:
     - vendor/larastan/larastan/extension.neon
+    - vendor/phpat/phpat/extension.neon
     - phpstan-baseline.neon
+
+# The architecture rules run inside this analysis rather than as a separate job,
+# so a layering violation is reported at the offending line like any other error.
+# See tests/Architecture/ArchitectureTest.php.
+services:
+    -
+        class: Tests\Architecture\ArchitectureTest
+        tags:
+            - phpat.test
 
 parameters:
     level: max
@@ -19,3 +29,8 @@ parameters:
     # so it is left exactly as delivered. Anything it reports lives in the baseline
     # with that note rather than being "fixed" in someone else's code.
     treatPhpDocTypesAsCertain: false
+
+    phpat:
+        # Name the rule in the message, so a failure says which boundary broke
+        # instead of only which classes touched.
+        show_rule_names: true

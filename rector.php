@@ -22,6 +22,7 @@ return RectorConfig::configure()
         __DIR__.'/tests/Feature/Invoices',
         __DIR__.'/tests/E2E',
         __DIR__.'/tests/Support',
+        __DIR__.'/tests/Architecture',
     ])
     ->withSets([
         // Matches composer.json's `php: ^8.5`. It was UP_TO_PHP_84, which meant the
