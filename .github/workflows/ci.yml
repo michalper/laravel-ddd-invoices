@@ -44,7 +44,7 @@ jobs:
       # Caching the built extension is the single biggest saving in this workflow.
       - name: Resolve extension cache key
         id: extensions
-        uses: shivammathur/cache-extensions@22e24453af1bf3851994136f122ce065ab828a74 # 1.15.2
+        uses: shivammathur/cache-extensions@0fb23b7eed24220c5400222d717ba04d43beeef8 # 1.15.9
         with:
           php-version: '8.5'
           extensions: pdo_sqlite, sqlite3, pcov
@@ -56,7 +56,7 @@ jobs:
           key: ${{ steps.extensions.outputs.key }}
           restore-keys: ${{ steps.extensions.outputs.key }}
 
-      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: '8.5'
           extensions: pdo_sqlite, sqlite3, pcov
@@ -92,7 +92,7 @@ jobs:
       # it competes with this and that file is ignored.
       - name: SonarCloud analysis
         if: env.SONAR_TOKEN != ''
-        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        uses: SonarSource/sonarqube-scan-action@4d1dc0c91ee400dcf8a6dddf2f705ac36542e304 # v8.4.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
@@ -148,7 +148,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: '8.5'
           extensions: pdo_mysql, pdo_pgsql
@@ -197,7 +197,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: '8.5'
           coverage: none
